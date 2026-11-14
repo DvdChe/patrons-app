@@ -1,71 +1,43 @@
-"""Optional LLM extraction (Ollama chat API) for the fields the rules cannot read reliably:
-fabrics, yardage, seasons, detail tags, garment type.
+"""Optional LLM extraction (Ollama chat API), one short call per field.
 
-The model never sees a whole booklet: only its opening pages and the passages around fabric
-and yardage keywords (located by the rules), which keeps prompts short enough for small
-models and CPU inference. Answers are constrained by a JSON schema and validated.
+Each field task sends only the booklet passages about that field (located with keywords),
+asks one question with a strict JSON schema, and can be shown worked examples: other patterns
+of the same brand with their known answer (booklets of a brand share their layout).
+Measured with `evaluate_extraction --llm [--few-shot]`; the pipeline only uses the fields that
+beat the rules.
 """
 
 import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 
-from apps.catalog.models import FabricKind, Season, Tag
+from apps.catalog.models import Difficulty, FabricKind, Pattern, SeamAllowance
 
 from . import extractors as x
 
 log = logging.getLogger(__name__)
-
-TOPICS = (
-    r"tissu|fabric|matiere|preconisation|metrage|laize|consommation|yardage|you will need"
-    r"|fabric requirements?|quantite"
-)
-OPENING_CHARS = 2500
-WINDOW_BEFORE, WINDOW_AFTER = 150, 650
-MAX_EXCERPT_CHARS = 6000
 TIMEOUT = 300
-
-SYSTEM_PROMPT = """You read sewing pattern booklets (French or English) and extract facts.
-Use only what the text says; when something is not stated, use null or an empty list.
-- garment_type: the kind of garment in French, one or two words (Robe, Trench, Pantalon...).
-- fabrics: the recommended fabrics, copied as written in the booklet (French if available).
-- fabric_kind: "woven", "knit", "both" or "unspecified", from the recommended fabrics.
-- yardage_m: metres of MAIN fabric needed for the LARGEST size with a 140-150 cm wide fabric.
-  Not the lining, not other widths. null if not given for that width.
-- seasons: seasons this garment is designed for, judged from the garment and its recommended
-  fabrics, not from passing remarks. Use "all" for a garment worn all year. Empty if unclear.
-- tags: details that describe THIS pattern (sleeves, neckline, closure, waist, leg, length,
-  fit), only from the allowed values, only if the text says so."""
-
-
-@dataclass
-class LlmAnswer:
-    garment_type: str = ""
-    fabrics: str = ""
-    fabric_kind: str = FabricKind.UNSPECIFIED
-    yardage_m: Decimal | None = None
-    seasons: list[str] = field(default_factory=list)
-    tags: list[tuple[str, str]] = field(default_factory=list)
-    seconds: float = 0.0
 
 
 def enabled() -> bool:
     return bool(settings.LLM_URL and settings.LLM_MODEL)
 
 
-def excerpts(raw_text: str) -> str:
-    """Passages around fabric and yardage keywords, as written, merged and capped."""
+def passages(raw_text: str, topics: str, before: int, after: int, max_chars: int) -> str:
+    """Passages around the topic keywords, as written, merged and capped."""
     prepared, index = x.prepare_map(raw_text)
     spans: list[list[int]] = []
-    for m in re.finditer(TOPICS, prepared):
-        start = index[max(0, m.start() - WINDOW_BEFORE)]
-        end = index[min(len(index) - 1, m.end() + WINDOW_AFTER)]
+    for m in re.finditer(topics, prepared):
+        start = index[max(0, m.start() - before)]
+        end = index[min(len(index) - 1, m.end() + after)]
         if spans and start <= spans[-1][1]:
             spans[-1][1] = max(spans[-1][1], end)
         else:
@@ -73,46 +45,192 @@ def excerpts(raw_text: str) -> str:
     out, total = [], 0
     for start, end in spans:
         part = re.sub(r"[ \t]+", " ", raw_text[start:end]).strip()
-        if total + len(part) > MAX_EXCERPT_CHARS:
-            break
+        if total + len(part) > max_chars:
+            part = part[: max_chars - total]
         out.append(part)
         total += len(part)
-    return "\n[…]\n".join(out)
+        if total >= max_chars:
+            break
+    return "\n[…]\n".join(p for p in out if p)
 
 
-def _schema(tag_values: list[str]) -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            "garment_type": {"type": "string"},
-            "fabrics": {"type": "string"},
-            "fabric_kind": {"type": "string", "enum": [c.value for c in FabricKind]},
-            "yardage_m": {"type": ["number", "null"]},
-            "seasons": {
-                "type": "array",
-                "items": {"type": "string", "enum": [s.value for s in Season]},
-            },
-            "tags": {"type": "array", "items": {"type": "string", "enum": tag_values}},
-        },
-        "required": ["garment_type", "fabrics", "fabric_kind", "yardage_m", "seasons", "tags"],
-    }
+def _number(value) -> Decimal | None:
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
 
 
-def ask(name: str, opening: str, raw_text: str, model: str | None = None) -> LlmAnswer | None:
-    """One chat call; None when the model is unreachable or answers nonsense."""
-    tag_values = [f"{t.group} : {t.value}" for t in Tag.objects.all()]
-    user = (
-        f"Pattern name: {name or 'unknown'}\n\n"
-        f"Opening pages:\n{opening[:OPENING_CHARS]}\n\n"
-        f"Passages about fabrics and yardage:\n{excerpts(raw_text) or '(none)'}"
-    )
+def _bounds(size_range: str) -> tuple[str, str]:
+    tokens = re.findall(r"\d{2}|[2-6]?x{0,3}[sml]\b|unique", size_range.lower())
+    return (tokens[0], tokens[1]) if len(tokens) >= 2 else ("", "")
+
+
+@dataclass(frozen=True)
+class FieldTask:
+    name: str
+    question: str
+    schema: dict
+    source: Callable[[str, str], str]  # (raw booklet text, opening pages) -> passage
+    example: Callable[[Pattern], dict | None]  # known answer of an inventory pattern
+
+
+def _schema(properties: dict) -> dict:
+    return {"type": "object", "properties": properties, "required": list(properties)}
+
+
+TASKS = [
+    FieldTask(
+        "brand",
+        "Which brand or designer published this sewing pattern? Give its name as written "
+        "(not the pattern name). Empty string if not stated.",
+        _schema({"brand": {"type": "string"}}),
+        lambda raw, opening: (
+            opening[:1500]
+            + "\n[…]\n"
+            + passages(raw, r"©|copyright|www|\.com|\.fr|instagram|@", 80, 80, 800)
+        ),
+        lambda p: {"brand": p.brand.name},
+    ),
+    FieldTask(
+        "garment",
+        "What kind of garment is this pattern? Answer in French with one or two words "
+        "(Robe, Jupe, Pantalon, Trench, Combinaison...).",
+        _schema({"garment_type": {"type": "string"}}),
+        lambda raw, opening: opening[:1500],
+        lambda p: {"garment_type": p.garment_type} if p.garment_type else None,
+    ),
+    FieldTask(
+        "sizes",
+        "Which is the smallest and the largest size of the pattern, as printed (34, XS...)? "
+        "Empty strings if not stated.",
+        _schema({"smallest": {"type": "string"}, "largest": {"type": "string"}}),
+        lambda raw, opening: passages(raw, r"\btailles?\b|\bsizes?\b", 60, 300, 2500),
+        lambda p: (
+            dict(zip(("smallest", "largest"), _bounds(p.size_range), strict=True))
+            if _bounds(p.size_range)[0]
+            else None
+        ),
+    ),
+    FieldTask(
+        "difficulty",
+        "What sewing level does the booklet state? Copy the wording as written, and classify "
+        "it. Use unspecified if no level is stated.",
+        _schema(
+            {
+                "as_written": {"type": "string"},
+                "level": {"type": "string", "enum": [d.value for d in Difficulty]},
+            }
+        ),
+        lambda raw, opening: (
+            opening[:800] + "\n[…]\n" + passages(raw, r"niveau|level|difficult", 80, 200, 1500)
+        ),
+        lambda p: (
+            {"as_written": p.difficulty_raw, "level": p.difficulty}
+            if p.difficulty != Difficulty.UNSPECIFIED
+            else None
+        ),
+    ),
+    FieldTask(
+        "seam",
+        "Are seam allowances included in the pattern pieces? Give the main seam allowance width "
+        "in cm (not the hem), null if not stated.",
+        _schema(
+            {
+                "included": {"type": "string", "enum": [s.value for s in SeamAllowance]},
+                "width_cm": {"type": ["number", "null"]},
+            }
+        ),
+        lambda raw, opening: passages(
+            raw, r"marges?|seam allowances?|valeurs? de couture|coutures? comprises", 150, 300, 2000
+        ),
+        lambda p: (
+            {
+                "included": p.seam_allowance,
+                "width_cm": float(w)
+                if (w := _number(_first_number(p.seam_allowance_detail)))
+                else None,
+            }
+            if p.seam_allowance != SeamAllowance.UNKNOWN
+            else None
+        ),
+    ),
+    FieldTask(
+        "yardage",
+        "How many metres of main fabric does the LARGEST size need, for a 140-150 cm wide "
+        "fabric? Not the lining, not other widths. null if not stated for that width.",
+        _schema({"yardage_m": {"type": ["number", "null"]}}),
+        lambda raw, opening: passages(
+            raw,
+            r"metrage|consommation|laize|yardage|fabric requirements?|you will need"
+            r"|quantite de tissu|tissu principal",
+            100,
+            900,
+            3500,
+        ),
+        lambda p: {"yardage_m": float(p.yardage_max_m)} if p.yardage_max_m else None,
+    ),
+    FieldTask(
+        "fabrics",
+        "Which fabrics does the booklet recommend? Copy them as written (French if available) "
+        "and say whether they are woven, knit or both.",
+        _schema(
+            {
+                "fabrics": {"type": "string"},
+                "kind": {"type": "string", "enum": [k.value for k in FabricKind]},
+            }
+        ),
+        lambda raw, opening: passages(raw, r"tissu|fabric|matiere|preconisation", 150, 600, 3000),
+        lambda p: (
+            {"fabrics": p.fabrics_raw, "kind": p.fabric_kind}
+            if p.fabric_kind != FabricKind.UNSPECIFIED
+            else None
+        ),
+    ),
+]
+TASKS_BY_NAME = {t.name: t for t in TASKS}
+
+SYSTEM_PROMPT = (
+    "You read passages of a sewing pattern booklet (French or English) and answer one "
+    "question in JSON. Use only what the passages say; never guess."
+)
+
+
+def _first_number(text: str) -> str:
+    m = re.search(r"\d+(?:[.,]\d+)?", text or "")
+    return m.group(0).replace(",", ".") if m else ""
+
+
+@dataclass
+class LlmAnswer:
+    brand: str = ""
+    garment_type: str = ""
+    size_range: str = ""
+    difficulty: str = Difficulty.UNSPECIFIED
+    difficulty_raw: str = ""
+    seam_allowance: str = SeamAllowance.UNKNOWN
+    seam_width: str = ""  # "1 cm"
+    yardage_m: Decimal | None = None
+    fabrics: str = ""
+    fabric_kind: str = FabricKind.UNSPECIFIED
+    seconds: float = 0.0
+    failed: list[str] = field(default_factory=list)
+
+
+# Examples: task name -> [(passage, answer), ...], for few-shot prompting.
+Examples = dict[str, list[tuple[str, dict]]]
+
+
+def _chat(task: FieldTask, passage: str, examples: list, model: str | None) -> tuple[dict, float]:
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for example_passage, answer in examples:
+        messages.append({"role": "user", "content": f"{task.question}\n\n{example_passage}"})
+        messages.append({"role": "assistant", "content": json.dumps(answer, ensure_ascii=False)})
+    messages.append({"role": "user", "content": f"{task.question}\n\n{passage}"})
     body = {
         "model": model or settings.LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user},
-        ],
-        "format": _schema(tag_values),
+        "messages": messages,
+        "format": task.schema,
         "stream": False,
         "think": False,
         "options": {"temperature": 0, "num_ctx": 8192},
@@ -122,30 +240,66 @@ def ask(name: str, opening: str, raw_text: str, model: str | None = None) -> Llm
         data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            reply = json.load(response)
-        data = json.loads(reply["message"]["content"])
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as e:
-        log.warning("LLM extraction failed: %s", e)
-        return None
-    return _parse(data, set(tag_values), reply.get("total_duration", 0) / 1e9)
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        reply = json.load(response)
+    return json.loads(reply["message"]["content"]), reply.get("total_duration", 0) / 1e9
 
 
-def _parse(data: dict, allowed_tags: set[str], seconds: float) -> LlmAnswer:
-    answer = LlmAnswer(seconds=seconds)
-    answer.garment_type = str(data.get("garment_type") or "").strip()[:100]
-    answer.fabrics = str(data.get("fabrics") or "").strip()[:500]
-    if data.get("fabric_kind") in FabricKind.values:
-        answer.fabric_kind = data["fabric_kind"]
-    try:
-        value = Decimal(str(data.get("yardage_m"))).quantize(Decimal("0.01"))
-        if Decimal("0.2") <= value <= 10:
-            answer.yardage_m = value
-    except (InvalidOperation, ValueError):
-        pass
-    answer.seasons = [s for s in dict.fromkeys(data.get("seasons") or []) if s in Season.values]
-    answer.tags = [
-        tuple(t.split(" : ", 1)) for t in dict.fromkeys(data.get("tags") or []) if t in allowed_tags
-    ]
+def ask(
+    opening: str,
+    raw_text: str,
+    model: str | None = None,
+    examples: Examples | None = None,
+    tasks: list[str] | None = None,
+) -> LlmAnswer | None:
+    """Run the field tasks; None when the server is unreachable."""
+    answer = LlmAnswer()
+    started = time.monotonic()
+    for task in TASKS:
+        if tasks is not None and task.name not in tasks:
+            continue
+        passage = task.source(raw_text, opening).strip()
+        if not passage:
+            continue
+        try:
+            data, _ = _chat(task, passage, (examples or {}).get(task.name, []), model)
+        except urllib.error.URLError as e:
+            log.warning("LLM unreachable: %s", e)
+            return None
+        except (TimeoutError, KeyError, json.JSONDecodeError) as e:
+            log.warning("LLM task %s failed: %s", task.name, e)
+            answer.failed.append(task.name)
+            continue
+        _apply(answer, task.name, data)
+    answer.seconds = time.monotonic() - started
     return answer
+
+
+def _apply(answer: LlmAnswer, task: str, data: dict) -> None:
+    text = lambda key: str(data.get(key) or "").strip()[:300]  # noqa: E731
+    if task == "brand":
+        answer.brand = text("brand")
+    elif task == "garment":
+        answer.garment_type = text("garment_type")[:100]
+    elif task == "sizes":
+        smallest, largest = text("smallest").upper(), text("largest").upper()
+        if smallest and largest and smallest != largest:
+            answer.size_range = f"{smallest} – {largest}"
+    elif task == "difficulty":
+        if data.get("level") in Difficulty.values:
+            answer.difficulty = data["level"]
+            answer.difficulty_raw = text("as_written") if answer.difficulty != "unspecified" else ""
+    elif task == "seam":
+        if data.get("included") in SeamAllowance.values:
+            answer.seam_allowance = data["included"]
+        width = _number(data.get("width_cm"))
+        if answer.seam_allowance == SeamAllowance.INCLUDED and width and 0 < width <= 5:
+            answer.seam_width = f"{format(width.normalize(), 'f').replace('.', ',')} cm"
+    elif task == "yardage":
+        value = _number(data.get("yardage_m"))
+        if value is not None and Decimal("0.2") <= value <= 10:
+            answer.yardage_m = value.quantize(Decimal("0.01"))
+    elif task == "fabrics":
+        answer.fabrics = text("fabrics")
+        if data.get("kind") in FabricKind.values:
+            answer.fabric_kind = data["kind"]

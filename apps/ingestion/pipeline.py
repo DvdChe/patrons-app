@@ -54,6 +54,7 @@ def propose(
     brand_rules: dict[int, tuple[str, str]] | None = None,
     use_llm: bool = False,
     llm_model: str | None = None,
+    llm_examples=None,
 ) -> Proposal:
     """`brand_rules`: brand id -> (seam allowance, detail) used when the booklet is silent."""
     doc = read_text(files)
@@ -100,18 +101,18 @@ def propose(
     p.seasons = x.seasons(text)
     p.tags = x.tags(text)
     if use_llm:
-        complete_with_llm(p, llm_model)
+        complete_with_llm(p, llm_model, llm_examples)
     return p
 
 
-def complete_with_llm(p: Proposal, model: str | None = None) -> None:
+def complete_with_llm(p: Proposal, model: str | None = None, examples=None) -> None:
     """Ask the LLM, then fill only what the rules left empty.
 
-    Measured with evaluate_extraction --llm (40 unseen patterns, qwen3.5 9B): only the
-    fabrics gain (recall of the fabric kind 19 % -> 52 %). Family, yardage, seasons and tags
-    are not taken from the LLM: no gain, or much worse than the rules (tags: 9 % precision).
+    Only the fabrics are taken for now (measured gain: fabric kind recall 19 % -> 52 % on 40
+    unseen patterns); the other fields are measured with evaluate_extraction --llm before
+    being trusted.
     """
-    p.llm = llm.ask(p.name, p.document.opening, p.document.text, model)
+    p.llm = llm.ask(p.document.opening, p.document.text, model, examples)
     if p.llm is None:
         return
     if not p.fabrics_raw and p.llm.fabrics:

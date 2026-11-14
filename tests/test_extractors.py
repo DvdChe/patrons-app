@@ -250,3 +250,23 @@ def test_tags():
 def test_difficulty_raw_phrase_is_quoted_and_capitalised():
     text = x.prepare("Niveau / Level : « Tout va bien se passer » « Everything is gonna be okay »")
     assert x.difficulty(text)[1] == "« Tout va bien se passer »"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Make My Lemonade", 1),
+        ("MAKE MY LEMONADE", 1),
+        ("MML", 1),  # alias
+        ("Sew Magazine", 2),  # parenthesis of the stored name ignored
+        ("Fibre", None),  # one word only matches a whole name
+        ("", None),
+    ],
+)
+def test_brand_from_name(name, expected):
+    brands = [
+        (1, "Make My Lemonade", ["MML"]),
+        (2, "Sew Magazine (patrons gratuits)", []),
+        (3, "Fibre Mood", []),
+    ]
+    assert x.brand_from_name(name, brands) == expected

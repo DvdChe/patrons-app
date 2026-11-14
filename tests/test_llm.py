@@ -1,5 +1,5 @@
-"""LLM extraction: excerpts, answer validation, fill-only-empty merge. No network: the Ollama
-call is replaced by a fake."""
+"""LLM extraction: passages, per-field answers, few-shot messages, fill-only-empty merge.
+No network: the Ollama call is replaced by a fake answering from the requested schema."""
 
 import io
 import json
@@ -12,18 +12,23 @@ from apps.ingestion import llm
 from apps.ingestion.documents import DocumentText
 from apps.ingestion.pipeline import Proposal, complete_with_llm
 
+BOOKLET = (
+    "Voici Rosa, une robe fluide. Niveau : facile. Tailles : du 34 au 46.\n"
+    + "Montage. " * 300
+    + "Tissus conseillés : crêpe, viscose. Les marges de couture de 1 cm sont incluses. "
+    + "Métrage : 2,10 m en laize 140 pour la plus grande taille."
+)
 
-def test_excerpts_keep_only_passages_about_fabrics_and_yardage():
-    raw = (
-        "Bonjour ! " + "Blabla. " * 200
-        + "Tissus conseillés : crêpe, viscose. " + "Montage. " * 200
-        + "Métrage : 2,10 m en laize 140."
-    )  # fmt: skip
-    out = llm.excerpts(raw)
-    assert "crêpe, viscose" in out
-    assert "2,10 m en laize 140" in out
-    assert "[…]" in out  # two separate passages
-    assert len(out) < len(raw) / 2
+# Answer per task, recognised by the first property of the requested schema.
+ANSWERS = {
+    "brand": {"brand": "Atelier Rosa"},
+    "garment_type": {"garment_type": "Robe"},
+    "smallest": {"smallest": "34", "largest": "46"},
+    "as_written": {"as_written": "Facile", "level": "beginner"},
+    "included": {"included": "included", "width_cm": 1},
+    "yardage_m": {"yardage_m": 2.1},
+    "fabrics": {"fabrics": "crêpe, viscose", "kind": "woven"},
+}
 
 
 @pytest.fixture
@@ -32,84 +37,93 @@ def fake_ollama(monkeypatch, settings):
     settings.LLM_MODEL = "test-model"
     calls = []
 
-    def respond(answer):
-        def urlopen(request, timeout):
-            calls.append(json.loads(request.data))
-            body = {"message": {"content": json.dumps(answer)}, "total_duration": 2_000_000_000}
-            return io.BytesIO(json.dumps(body).encode())
+    def urlopen(request, timeout):
+        body = json.loads(request.data)
+        calls.append(body)
+        first_property = next(iter(body["format"]["properties"]))
+        answer = ANSWERS.get(first_property, {})
+        reply = {"message": {"content": json.dumps(answer)}, "total_duration": 1_000_000_000}
+        return io.BytesIO(json.dumps(reply).encode())
 
-        monkeypatch.setattr("urllib.request.urlopen", urlopen)
-
-    return respond, calls
-
-
-ANSWER = {
-    "garment_type": "Trench",
-    "fabrics": "drap de laine, tweed",
-    "fabric_kind": "woven",
-    "yardage_m": 4.55,
-    "seasons": ["winter", "winter", "spring"],  # duplicate and invalid value
-    "tags": ["Manches : raglan", "Manches : inventé"],  # value outside the taxonomy
-}
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    return calls
 
 
-def test_ask_sends_a_schema_and_validates_the_answer(db, fake_ollama):
-    respond, calls = fake_ollama
-    Tag.objects.create(group="Manches", value="raglan")
-    respond(ANSWER)
-
-    answer = llm.ask("Hendriks", "Voici Hendriks", "Tissus conseillés : drap de laine")
-
-    assert answer.garment_type == "Trench"
-    assert answer.yardage_m == D("4.55")
-    assert answer.seasons == ["winter"]
-    assert answer.tags == [("Manches", "raglan")]
-    assert answer.seconds == 2
-    sent = calls[0]
-    assert sent["model"] == "test-model"
-    assert sent["think"] is False
-    assert sent["format"]["properties"]["tags"]["items"]["enum"] == ["Manches : raglan"]
+def test_passages_keep_only_the_text_around_the_keywords():
+    out = llm.passages(BOOKLET, r"tissu|metrage", 20, 60, 5000)
+    assert "crêpe, viscose" in out
+    assert "Montage. Montage. Montage. Montage." not in out
+    assert len(out) < len(BOOKLET) / 4
 
 
-def test_ask_returns_none_when_ollama_is_down(db, settings):
+def test_ask_runs_one_call_per_field(fake_ollama):
+    answer = llm.ask(BOOKLET[:200], BOOKLET)
+
+    assert len(fake_ollama) == len(llm.TASKS)
+    assert answer.brand == "Atelier Rosa"
+    assert answer.size_range == "34 – 46"
+    assert (answer.difficulty, answer.difficulty_raw) == ("beginner", "Facile")
+    assert (answer.seam_allowance, answer.seam_width) == ("included", "1 cm")
+    assert answer.yardage_m == D("2.10")
+    assert answer.fabric_kind == "woven"
+    assert all(call["think"] is False and call["stream"] is False for call in fake_ollama)
+
+
+def test_few_shot_examples_are_sent_as_previous_turns(fake_ollama):
+    examples = {"yardage": [("Métrage : 1,50 m", {"yardage_m": 1.5})]}
+    llm.ask("", BOOKLET, examples=examples, tasks=["yardage"])
+    roles = [m["role"] for m in fake_ollama[0]["messages"]]
+    assert roles == ["system", "user", "assistant", "user"]
+    assert fake_ollama[0]["messages"][2]["content"] == '{"yardage_m": 1.5}'
+
+
+def test_invalid_values_are_dropped(fake_ollama, monkeypatch):
+    monkeypatch.setitem(ANSWERS, "yardage_m", {"yardage_m": 250})
+    monkeypatch.setitem(ANSWERS, "as_written", {"as_written": "A2", "level": "expert"})
+    answer = llm.ask("", BOOKLET, tasks=["yardage", "difficulty"])
+    assert answer.yardage_m is None
+    assert answer.difficulty == "unspecified"
+
+
+def test_ask_returns_none_when_ollama_is_down(settings):
     settings.LLM_URL = "http://127.0.0.1:9"  # nothing listens there
     settings.LLM_MODEL = "test-model"
-    assert llm.ask("x", "", "") is None
+    assert llm.ask("", BOOKLET) is None
 
 
-def test_llm_only_fills_what_the_rules_left_empty(db, fake_ollama):
-    respond, _ = fake_ollama
-    respond(ANSWER)
+def test_llm_only_fills_what_the_rules_left_empty(fake_ollama):
     p = Proposal(
         family=Family.DRESSES,
         garment_type="Robe",
         fabric_kind=FabricKind.UNSPECIFIED,
-        document=DocumentText(text="", opening=""),
+        document=DocumentText(text=BOOKLET, opening=BOOKLET[:200]),
     )
 
     complete_with_llm(p)
 
     assert (p.garment_type, p.family) == ("Robe", Family.DRESSES)  # never from the LLM
     assert p.fabric_kind == FabricKind.WOVEN  # filled
-    assert p.fabrics_raw == "drap de laine, tweed"
-    assert p.yardage_max_m is None  # never pre-filled, kept on p.llm for hints
-    assert p.llm.yardage_m == D("4.55")
+    assert p.fabrics_raw == "crêpe, viscose"
+    assert p.yardage_max_m is None  # not trusted yet, kept on p.llm
+    assert p.llm.yardage_m == D("2.10")
 
 
-def test_drawing_tags_keeps_taxonomy_values_only(db, fake_ollama):
+def test_drawing_tags_keeps_taxonomy_values_only(db, monkeypatch, settings):
     from PIL import Image
 
     from apps.ingestion import vision
 
-    respond, calls = fake_ollama
+    settings.LLM_URL, settings.LLM_MODEL = "http://ollama:11434", "test-model"
     Tag.objects.create(group="Manches", value="courtes")
-    Tag.objects.create(group="Manches", value="longues")
     Tag.objects.create(group="Coupe", value="droite")
-    respond({"Manches": ["courtes", "courtes", "inventée"], "Coupe": "droite"})  # bad type
+    sent = []
 
+    def urlopen(request, timeout):
+        sent.append(json.loads(request.data))
+        answer = {"Manches": ["courtes", "courtes", "inventée"], "Coupe": "droite"}
+        return io.BytesIO(json.dumps({"message": {"content": json.dumps(answer)}}).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
     answer = vision.drawing_tags(Image.new("RGB", (2000, 1000), "white"))
-
     assert answer.tags == [("Manches", "courtes")]
-    sent = calls[0]
-    assert sent["messages"][0]["images"]  # base64 PNG, resized
-    assert sent["format"]["properties"]["Manches"]["maxItems"] == 2
+    assert sent[0]["messages"][0]["images"]

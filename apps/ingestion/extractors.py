@@ -457,6 +457,23 @@ def copyright_holder(raw_text: str) -> str:
     return ""
 
 
+def brand_from_name(name: str, brands: list[tuple[int, str, list[str]]]) -> int | None:
+    """Known brand whose name or alias matches a brand name read in the booklet."""
+    wanted = " ".join(re.split(r"[^a-z0-9]+", prepare(name))).strip()
+    if not wanted:
+        return None
+    for pk, label, aliases in brands:
+        for candidate in [label, *aliases]:
+            key = " ".join(re.split(r"[^a-z0-9]+", prepare(re.sub(r"\(.*?\)", " ", candidate))))
+            key = key.strip()
+            # "Make My Lemonade Paris" contains "make my lemonade"; a lone word ("Fibre") is
+            # too vague to stand for "Fibre Mood".
+            contained = (" " in key and key in wanted) or (" " in wanted and wanted in key)
+            if key and (key == wanted or contained):
+                return pk
+    return None
+
+
 def audience(text: str) -> Audience:
     if re.search(r"\b(?:unisexe?|mixte|unisex)\b", text):
         return Audience.UNISEX
