@@ -10,8 +10,13 @@
 <textarea class="notes" placeholder="Mes notes…" @input.debounce.600ms="saveQuick({{ pattern.pk }}, {notes: $event.target.value})">{{ pattern.notes }}</textarea>
 
 <div class="files">
-  {% for f in files %}<a class="open" href="{{ f.file.url }}" target="_blank" rel="noopener">{{ f.original_name }}</a>{% empty %}
-  <span class="disc">Fichiers pas encore importés{% if pattern.legacy_location %} — emplacement d’origine : {{ pattern.legacy_location }}{% endif %}</span>
+  {% regroup files by get_kind_display as groups %}
+  {% for group in groups %}
+    <div><b>{{ group.grouper }}</b> :
+      {% for f in group.list %}<a href="{% url 'catalog:file' f.pk %}" target="_blank" rel="noopener">{{ f.original_name }}</a> <span class="disc">({{ f.size|filesizeformat }})</span>{% if not forloop.last %} · {% endif %}{% endfor %}
+    </div>
+  {% empty %}
+    <span class="disc">Aucun fichier{% if pattern.legacy_location %} — emplacement d’origine : {{ pattern.legacy_location }}{% endif %}</span>
   {% endfor %}
 </div>
 

@@ -47,3 +47,15 @@ Reads `inventaire-patrons-complet.csv`, `tableaux-tailles.csv`, `_moteur/taglist
 `_vignettes/`. Safe to re-run: patterns are matched on their CSV row number (`legacy_ref`),
 size charts are replaced. Values that cannot be normalized are reported as warnings and
 left unspecified, never guessed.
+
+Then upload the pattern files (PDF, images, zip contents) to the media storage:
+
+```bash
+uv run python manage.py import_files /path/to/Patrons --owner <username> --dry-run
+uv run python manage.py import_files /path/to/Patrons --owner <username> [--ref 12 ...]
+```
+
+Files are stored by content hash (identical files stored once, re-runs upload nothing new).
+When several patterns share a folder (magazines, books), a file is linked to the pattern whose
+name appears in the file name; unmatched files are reported. The full library is about 7 GiB:
+in development, prefer `--ref` on a few patterns.

@@ -4,12 +4,15 @@ Every query is scoped to request.user: other users' data answers 404.
 """
 
 import json
+import mimetypes
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
+from django.core.files.storage import FileSystemStorage
 from django.db import IntegrityError, transaction
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_http_methods
 
 from . import presenters
@@ -22,6 +25,7 @@ from .models import (
     Family,
     MeasurementProfile,
     Pattern,
+    PatternFile,
     SeamAllowance,
     Tag,
 )
@@ -142,6 +146,38 @@ def pattern_sheet(request, pk: int):
         ],
     }
     return render(request, "catalog/_sheet.html", context)
+
+
+# Types a browser may display in a tab. Anything else is downloaded, so an uploaded HTML or
+# SVG file can never run scripts on the app's origin.
+INLINE_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif"}
+DOWNLOAD_URL_TTL = 300  # seconds
+
+
+@login_required
+@require_GET
+def file_download(request, pk: int):
+    f = get_object_or_404(PatternFile, pk=pk, pattern__owner=request.user)
+    content_type = mimetypes.guess_type(f.basename)[0] or "application/octet-stream"
+    inline = content_type in INLINE_TYPES
+    storage = f.file.storage
+    if isinstance(storage, FileSystemStorage):
+        return FileResponse(
+            f.file.open("rb"),
+            content_type=content_type,
+            as_attachment=not inline,
+            filename=f.basename,
+        )
+    # Object storage: short-lived presigned URL, file name and type forced on the response.
+    url = storage.url(
+        f.file.name,
+        parameters={
+            "ResponseContentType": content_type,
+            "ResponseContentDisposition": content_disposition_header(not inline, f.basename),
+        },
+        expire=DOWNLOAD_URL_TTL,
+    )
+    return redirect(url)
 
 
 @login_required

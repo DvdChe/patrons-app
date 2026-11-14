@@ -9,6 +9,8 @@ Design rules:
 - Primary keys are stable IDs, never the position of a row.
 """
 
+from pathlib import PurePosixPath
+
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField, DecimalRangeField
 from django.db import models
@@ -240,11 +242,20 @@ class Pattern(OwnedModel):
         return normalize(" ".join(parts))
 
 
+def blob_name(owner_id: int, sha256: str, filename: str) -> str:
+    """Content-addressed storage key: identical files are stored once per owner."""
+    suffix = PurePosixPath(filename).suffix.lower()
+    return f"files/{owner_id}/{sha256[:2]}/{sha256}{suffix}"
+
+
 def pattern_file_path(instance, filename):
-    return f"patterns/{instance.pattern.owner_id}/{instance.pattern_id}/{filename}"
+    return blob_name(instance.pattern.owner_id, instance.sha256, filename)
 
 
 class PatternFile(models.Model):
+    """A file of a pattern (booklet, pieces...). Its blob may be shared with other patterns
+    of the same owner when the content is identical."""
+
     class Kind(models.TextChoices):
         BOOKLET = "booklet", _("Livret")
         PIECES = "pieces", _("Planches")
@@ -255,10 +266,24 @@ class PatternFile(models.Model):
     pattern = models.ForeignKey(Pattern, on_delete=models.CASCADE, related_name="files")
     file = models.FileField(upload_to=pattern_file_path, max_length=500)
     kind = models.CharField(max_length=20, choices=Kind, default=Kind.OTHER)
-    original_name = models.CharField(max_length=500)
+    original_name = models.CharField(max_length=500)  # path inside the pattern folder or zip
+    sha256 = models.CharField(max_length=64, db_index=True)
+    size = models.PositiveBigIntegerField()
+
+    class Meta:
+        ordering = ["kind", "original_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pattern", "original_name"], name="patternfile_unique_name"
+            ),
+        ]
 
     def __str__(self):
         return self.original_name
+
+    @property
+    def basename(self) -> str:
+        return PurePosixPath(self.original_name).name
 
 
 class MeasureType(models.TextChoices):
