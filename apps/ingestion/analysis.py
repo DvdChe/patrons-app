@@ -8,6 +8,7 @@ from contextlib import closing
 from pathlib import PurePosixPath
 
 import pypdfium2 as pdfium
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
@@ -143,6 +144,8 @@ def analyse(job: IngestionJob) -> None:
         "seasons_hint": p.seasons,
         "ocr_pages": p.document.ocr_pages,
         "unreadable": list(p.document.unreadable),
+        # Which pipeline produced the proposal, to compare versions later.
+        "pipeline": {"llm_model": settings.LLM_MODEL if p.llm else None},
     }
     if not job.proposal["has_booklet"] and p.seam_allowance_source == InfoSource.BOOKLET:
         job.proposal["seam_allowance_source"] = InfoSource.PIECES  # read on the pattern pieces

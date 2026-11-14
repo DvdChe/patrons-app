@@ -22,6 +22,9 @@ class IngestionJob(models.Model):
     proposal = models.JSONField(default=dict)
     # Pages and images offered as thumbnail candidates: [{"file": id, "page": n | null}, ...]
     thumbnail_candidates = models.JSONField(default=list)
+    # Values the user validated, same keys as `proposal`: proposal vs validated is a
+    # human-checked example for measuring (and maybe one day training) the extraction.
+    validated = models.JSONField(default=dict, blank=True)
     pattern = models.ForeignKey(
         Pattern, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
@@ -32,6 +35,20 @@ class IngestionJob(models.Model):
 
     def __str__(self):
         return self.proposal.get("name") or f"Ajout {self.pk}"
+
+    def corrections(self) -> list[tuple[str, object, object]]:
+        """(field, proposed, validated) for every proposed field the user changed."""
+        return [
+            (k, self.proposal.get(k), v)
+            for k, v in self.validated.items()
+            if k in self.proposal and _comparable(self.proposal.get(k)) != _comparable(v)
+        ]
+
+
+def _comparable(value):
+    if isinstance(value, list):
+        return sorted(str(v) for v in value)
+    return "" if value in (None, "") else str(value)
 
 
 class IngestionFile(models.Model):

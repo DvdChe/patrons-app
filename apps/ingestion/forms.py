@@ -180,8 +180,36 @@ class ReviewForm(PatternForm):
         pattern.save()  # thumbnail and search text (tags are saved now)
         self.job.status = IngestionJob.Status.DONE
         self.job.pattern = pattern
-        self.job.save(update_fields=["status", "pattern"])
+        self.job.validated = validated_values(pattern, data)
+        self.job.save(update_fields=["status", "pattern", "validated"])
         return pattern
+
+
+def validated_values(pattern: Pattern, data: dict) -> dict:
+    """The validated pattern, in the shape of IngestionJob.proposal."""
+    return {
+        "name": pattern.name,
+        "brand": pattern.brand_id,
+        "new_brand": data.get("new_brand", "").strip(),
+        "garment_type": pattern.garment_type,
+        "family": pattern.family,
+        "audience": pattern.audience,
+        "size_range": pattern.size_range,
+        "difficulty": pattern.difficulty,
+        "difficulty_raw": pattern.difficulty_raw,
+        "seam_allowance": pattern.seam_allowance,
+        "seam_allowance_detail": pattern.seam_allowance_detail,
+        "seam_allowance_source": pattern.seam_allowance_source,
+        "fabrics_raw": pattern.fabrics_raw,
+        "fabric_kind": pattern.fabric_kind,
+        "yardage_raw": pattern.yardage_raw,
+        "yardage_max_m": str(pattern.yardage_max_m) if pattern.yardage_max_m else None,
+        "seasons": pattern.seasons,
+        "tags": [f"{t.group}|{t.value}" for t in pattern.tags.all()],
+        "brand_charts": [c.pk for c in data["brand_chart_objects"]],
+        "size_chart_rows": len(data["chart_rows"]),
+        "thumbnail": data.get("thumbnail_ref", ""),
+    }
 
 
 def initial_from_proposal(proposal: dict) -> dict:

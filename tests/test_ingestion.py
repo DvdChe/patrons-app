@@ -218,6 +218,12 @@ class TestReview:
             assert max(img.size) <= 800
         job.refresh_from_db()
         assert job.status == IngestionJob.Status.DONE
+        # Proposal vs validated values are kept as a human-checked example.
+        assert job.validated["yardage_max_m"] == "2.10"
+        assert job.validated["size_chart_rows"] == 2
+        corrected = {field: (before, after) for field, before, after in job.corrections()}
+        assert "brand" not in corrected  # proposed and kept
+        assert corrected["seam_allowance_detail"] == ("1 cm", "")  # cleared by the user
         assert job.pattern == pattern
         # Reopening the job goes to the pattern
         assert logged.get(f"/imports/{job.pk}/").url == f"/#pattern-{pattern.pk}"
