@@ -315,7 +315,9 @@ def test_pieces_only_upload(logged):
     assert p["new_brand"] == "Unfettered Patterns"
     assert p["size_range"] == "XS – XL"
     assert p["has_booklet"] is False
+    assert p["seam_allowance_source"] == "pieces"
     assert len(job.thumbnail_candidates) == 2  # the pieces pages, nothing better
     html = logged.get(f"/imports/{job.pk}/").content.decode()
     assert "Aucun livret reconnu" in html
     assert 'value="Unfettered Patterns"' in html
+    assert "lu sur les planches" in html

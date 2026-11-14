@@ -72,10 +72,8 @@ def review(request, pk: int):
     empty = (None, "", "unspecified", "unknown", "unclassified")
     sources = {k: v for k, v in SOURCES.items() if proposal.get(k) not in empty}
     if proposal.get("seam_allowance") not in (None, "", "unknown"):
-        seam = (
-            "règle de la marque"
-            if proposal["seam_allowance_source"] == "brand_rule"
-            else "lu dans le livret"
+        seam = {"brand_rule": "règle de la marque", "pieces": "lu sur les planches"}.get(
+            proposal["seam_allowance_source"], "lu dans le livret"
         )
         sources |= {"seam_allowance": seam, "seam_allowance_detail": seam}
     yardage = proposal.get("yardage_hint")
