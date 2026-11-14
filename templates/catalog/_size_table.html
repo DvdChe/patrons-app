@@ -1,0 +1,6 @@
+<table>
+  <tr><th>Taille</th>{% for h in table.headers %}<th>{{ h }}</th>{% endfor %}</tr>
+  {% for row in table.rows %}
+  <tr><td{% if row.highlight %} class="hl"{% endif %}>{{ row.label }}</td>{% for cell in row.cells %}<td{% if row.highlight %} class="hl"{% endif %}>{{ cell }}</td>{% endfor %}</tr>
+  {% endfor %}
+</table>

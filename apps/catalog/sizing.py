@@ -91,6 +91,7 @@ class Evaluation:
     main: dict[str, Location]  # main measures available in the chart and the profile
     needs_grading: bool  # chest, waist and hip point to different sizes
     recommended_index: int | None
+    main_order: tuple[str, ...] = ()  # main measures asked for, in priority order
 
 
 def evaluate(chart: Chart, profile: Profile, main: list[str]) -> Evaluation:
@@ -103,7 +104,7 @@ def evaluate(chart: Chart, profile: Profile, main: list[str]) -> Evaluation:
     main_results = {k: results[k] for k in main if k in results}
     distinct = {results[k] for k in GRADING_MEASURES if k in results}
     recommended = next((loc.index for loc in main_results.values() if loc.index is not None), None)
-    return Evaluation(results, main_results, len(distinct) > 1, recommended)
+    return Evaluation(results, main_results, len(distinct) > 1, recommended, tuple(main))
 
 
 def fits(body_charts: list[Chart], profile: Profile, main: list[str]) -> bool | None:
@@ -143,40 +144,64 @@ def ease(
     return out
 
 
+@dataclass(frozen=True)
+class BodyChartResult:
+    model: SizeChart
+    chart: Chart
+    evaluation: Evaluation
+
+    @property
+    def main_measures_in_chart(self) -> list[str]:
+        return [k for k in self.evaluation.main_order if k in self.chart.measures]
+
+
 @dataclass
 class Recommendation:
-    body_charts: list[tuple[SizeChart, Evaluation]] = field(default_factory=list)
-    finished_charts: list[SizeChart] = field(default_factory=list)
+    body_charts: list[BodyChartResult] = field(default_factory=list)
+    finished_charts: list[tuple[SizeChart, Chart]] = field(default_factory=list)
     main_measures: list[str] = field(default_factory=list)
     fits: bool | None = None
 
     @property
-    def primary(self) -> Evaluation | None:
-        """Evaluation of the first body chart, shown on the catalogue card."""
-        return self.body_charts[0][1] if self.body_charts else None
+    def primary(self) -> BodyChartResult | None:
+        """First body chart: the one shown on the catalogue card."""
+        return self.body_charts[0] if self.body_charts else None
 
     @property
     def recommended_label(self) -> str | None:
-        if not self.primary or self.primary.recommended_index is None:
+        p = self.primary
+        if p is None or p.evaluation.recommended_index is None:
             return None
-        chart = Chart.from_model(self.body_charts[0][0])
-        return chart.labels[self.primary.recommended_index]
+        return p.chart.labels[p.evaluation.recommended_index]
+
+    def ease(self, result: BodyChartResult, profile: Profile) -> list[tuple[str, str, Decimal]]:
+        index = result.evaluation.recommended_index
+        if index is None:
+            return []
+        return ease(result.chart, index, [c for _, c in self.finished_charts], profile)
 
 
 def recommend(pattern: Pattern, profile: Profile) -> Recommendation:
     """Evaluate a pattern against a profile. Own charts win; brand charts are the fallback
-    (they are only linked to patterns without a body chart of their own)."""
+    (they are only linked to patterns without a body chart of their own).
+
+    Prefetch `tags`, `size_charts__rows` and `brand_size_charts__rows` when calling it in a loop.
+    """
     charts = list(pattern.size_charts.all()) + list(pattern.brand_size_charts.all())
     body = [c for c in charts if c.measure_type == MeasureType.BODY]
-    finished = [c for c in charts if c.measure_type == MeasureType.FINISHED]
-    rec = Recommendation(finished_charts=finished)
+    rec = Recommendation(
+        finished_charts=[
+            (c, Chart.from_model(c)) for c in charts if c.measure_type == MeasureType.FINISHED
+        ]
+    )
     if not body:
         return rec
-    body_charts = [Chart.from_model(c) for c in body]
+    converted = [Chart.from_model(c) for c in body]
     tags = {(t.group, t.value) for t in pattern.tags.all()}
-    rec.main_measures = main_measures(pattern.family, tags, body_charts[0])
+    rec.main_measures = main_measures(pattern.family, tags, converted[0])
     rec.body_charts = [
-        (m, evaluate(c, profile, rec.main_measures)) for m, c in zip(body, body_charts, strict=True)
+        BodyChartResult(m, c, evaluate(c, profile, rec.main_measures))
+        for m, c in zip(body, converted, strict=True)
     ]
-    rec.fits = fits(body_charts, profile, rec.main_measures)
+    rec.fits = fits(converted, profile, rec.main_measures)
     return rec

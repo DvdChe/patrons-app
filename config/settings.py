@@ -63,6 +63,9 @@ DATABASES["default"]["CONN_MAX_AGE"] = env.int("DATABASE_CONN_MAX_AGE", default=
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 AUTH_USER_MODEL = "accounts.User"
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "catalog:catalogue"
+LOGOUT_REDIRECT_URL = "login"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -80,6 +83,7 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Media (pattern files, thumbnails): S3-compatible storage when configured, local disk otherwise.
 if env("S3_BUCKET", default=""):
@@ -97,7 +101,7 @@ if env("S3_BUCKET", default=""):
         },
     }
 else:
-    MEDIA_URL = "media/"
+    MEDIA_URL = "/media/"
     MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
     _media_storage = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
 

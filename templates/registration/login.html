@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Connexion — Moteur de patrons{% endblock %}
+{% block body %}
+<form class="login" method="post">
+  {% csrf_token %}
+  <h1>Moteur de patrons</h1>
+  {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <label for="id_username">Identifiant</label>
+  <input type="text" name="username" id="id_username" autocomplete="username" autofocus required>
+  <label for="id_password">Mot de passe</label>
+  <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button type="submit">Se connecter</button>
+</form>
+{% endblock %}

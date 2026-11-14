@@ -1,0 +1,62 @@
+{# Pattern sheet fragment, injected in the catalogue modal. Same layout as the MVP sheet. #}
+<h2 style="margin-top:0">{{ pattern.name }} <span class="mut" style="font-weight:400">— {{ pattern.brand.name }}</span></h2>
+{% if pattern.thumbnail %}<img src="{{ pattern.thumbnail.url }}" alt="" style="max-height:260px;float:right;margin:0 0 10px 14px;border-radius:6px">{% endif %}
+
+<div class="files">
+  {% for f in files %}<a class="open" href="{{ f.file.url }}" target="_blank" rel="noopener">{{ f.original_name }}</a>{% empty %}
+  <span class="disc">Fichiers pas encore importés{% if pattern.legacy_location %} — emplacement d’origine : {{ pattern.legacy_location }}{% endif %}</span>
+  {% endfor %}
+</div>
+
+<p><b>Détails :</b> {% for t in tags %}<span class="tg">{{ t.group }} : {{ t.value }}</span>{% empty %}<span class="mut">aucun</span>{% endfor %}</p>
+<p><b>Marges de couture :</b>
+  {% if pattern.seam_allowance == "unknown" %}<span class="mut">non renseigné</span>{% else %}{{ pattern.get_seam_allowance_display }}{% if pattern.seam_allowance_detail %} ({{ pattern.seam_allowance_detail }}){% endif %}{% endif %}
+  {% if pattern.seam_allowance_source != "unknown" %}<span class="disc">(source : {{ pattern.get_seam_allowance_source_display }})</span>{% endif %}
+</p>
+
+<h3>Taille</h3>
+{% for c in body_charts %}
+<div class="sz">
+  <b>{% if c.is_brand %}Tableau de la marque{% else %}Tableau du patron{% endif %}</b>
+  {% if "Capture fournie" in c.note %}<span class="cap">Tableau fourni par capture</span>{% endif %}
+  {% if c.note %}<span class="disc">({{ c.note }})</span>{% endif %}
+  <br>
+  {% if c.results %}
+    {% for r in c.results %}{{ r.label }}{% if r.main %} (zone principale){% endif %} {{ r.text }}{% if not forloop.last %} · {% endif %}{% endfor %}
+    {% if c.grading %}<span class="warn">— gradation à prévoir</span>{% endif %}
+    {% if c.ease %}<br>Aisance en taille {{ c.ease_label }} (mesure finie − votre mesure) : {{ c.ease|join:" · " }}{% endif %}
+  {% else %}
+    <span class="mut">Renseignez vos mensurations pour obtenir une taille conseillée.</span>
+  {% endif %}
+  {% include "catalog/_size_table.html" with table=c.table %}
+</div>
+{% empty %}
+<div class="sz">Tableau de tailles non disponible</div>
+{% endfor %}
+{% for c in finished_charts %}
+<div class="sz">
+  <b>Mesures du vêtement fini</b>
+  {% if "Capture fournie" in c.note %}<span class="cap">Tableau fourni par capture</span>{% endif %}
+  {% if c.note %}<span class="disc">({{ c.note }})</span>{% endif %}
+  {% include "catalog/_size_table.html" with table=c.table %}
+</div>
+{% endfor %}
+
+<h3>Fiche</h3>
+<div class="fl">
+  <div>Modèle</div><div>{{ pattern.name }}</div>
+  <div>Marque</div><div>{{ pattern.brand.name }}</div>
+  <div class="disc">Marque : fiabilité</div><div class="disc">{{ pattern.get_brand_confidence_display }}</div>
+  <div>Type</div><div>{{ pattern.garment_type|default:"—" }}</div>
+  <div>Famille</div><div>{{ pattern.get_family_display }}</div>
+  <div>Public</div><div>{{ pattern.get_audience_display }}</div>
+  <div>Saison</div><div>{{ seasons|default:"—" }}</div>
+  <div>Métrage (laize 140-150)</div><div>{{ pattern.yardage_raw|default:"—" }}</div>
+  <div>Tissus conseillés</div><div>{{ pattern.fabrics_raw|default:"—" }}</div>
+  <div>Tailles</div><div>{{ pattern.size_range|default:"—" }}</div>
+  <div>Niveau</div><div>{{ pattern.difficulty_raw|default:"—" }}</div>
+  <div>Cousu</div><div>{{ pattern.sewn|yesno:"Oui,Non" }}</div>
+  <div>Mes notes</div><div>{{ pattern.notes|default:"—"|linebreaksbr }}</div>
+  <div>Remarques inventaire</div><div>{{ pattern.remarks|default:"—" }}</div>
+  <div class="disc">Détails : source</div><div class="disc">{{ pattern.tags_source|default:"—" }}</div>
+</div>
