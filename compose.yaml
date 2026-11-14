@@ -1,5 +1,17 @@
-# Local development services. Run the app itself with `uv run python manage.py runserver`.
+# Development stack. Everything (server, tests, lint, imports, browser tests) runs here:
+#   docker compose up -d --wait                       # web app on http://127.0.0.1:8000
+#   docker compose exec web pytest                    # tests
+#   docker compose exec web ruff check .              # lint
+#   docker compose run --rm e2e                       # browser smoke test (see e2e/README.md)
 name: patrons-app  # shared by all worktrees (one dev database)
+
+x-dev-env: &dev-env
+  DJANGO_SECRET_KEY: dev-insecure-change-me
+  DJANGO_DEBUG: "true"
+  DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,web
+  DATABASE_URL: postgres://patrons:patrons@db:5432/patrons
+  MEDIA_ROOT: /app/media
+
 services:
   db:
     image: postgres:18
@@ -8,7 +20,7 @@ services:
       POSTGRES_PASSWORD: patrons
       POSTGRES_DB: patrons
     ports:
-      - "5433:5432"  # 5433 to avoid clashing with a local Postgres
+      - "127.0.0.1:5433:5432"  # for local SQL clients only
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
@@ -16,5 +28,49 @@ services:
       interval: 2s
       retries: 30
 
+  # Not named "app": Chromium forces HTTPS on the .app top-level domain (HSTS preload).
+  web:
+    build:
+      context: .
+      target: dev
+    environment: *dev-env
+    command: >
+      sh -c "uv sync --locked &&
+             python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "127.0.0.1:8000:8000"  # loopback only
+    volumes:
+      - .:/app
+      - venv:/opt/venv
+      - uv-cache:/root/.cache/uv
+      # MVP folder for import_inventory / import_files, read-only. Override with PATRONS_DIR.
+      - ${PATRONS_DIR:-../../Patrons}:/patrons:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 3s
+      start_period: 120s
+      retries: 40
+
+  e2e:
+    image: mcr.microsoft.com/playwright/python:v1.65.2-noble
+    profiles: [e2e]
+    working_dir: /e2e
+    environment:
+      BASE_URL: http://web:8000
+      E2E_USER: ${E2E_USER:-admin}
+      E2E_PASSWORD: ${E2E_PASSWORD:-admin}
+    command: sh -c "pip install -q --root-user-action=ignore playwright==1.65.2 && python smoke.py"
+    volumes:
+      - ./e2e:/e2e
+    depends_on:
+      web:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  venv:
+  uv-cache:

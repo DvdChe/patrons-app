@@ -7,20 +7,23 @@ Stack: Django, PostgreSQL, S3-compatible storage (optional in dev), Granian (WSG
 
 ## Development
 
+Everything runs in docker compose (dev image, source bind-mounted, auto-reload):
+
 ```bash
-cp .env.example .env
-docker compose up -d --wait        # PostgreSQL on localhost:5433
-uv run python manage.py migrate
-uv run python manage.py createsuperuser
-uv run python manage.py runserver
+docker compose up -d --wait                     # http://127.0.0.1:8000 (migrations applied)
+docker compose exec web python manage.py createsuperuser
 ```
 
 Checks (run before every commit):
 
 ```bash
-uv run ruff check . && uv run ruff format --check .
-uv run pytest
+docker compose exec web ruff check . && docker compose exec web ruff format --check .
+docker compose exec web pytest
+docker compose run --rm e2e                     # browser smoke test, see e2e/README.md
 ```
+
+The MVP `Patrons` folder is mounted read-only at `/patrons` (default `../../Patrons`,
+override with `PATRONS_DIR`).
 
 ## Production image
 
@@ -40,7 +43,7 @@ repository (copyrighted material and personal data).
 ## Importing the MVP inventory
 
 ```bash
-uv run python manage.py import_inventory /path/to/Patrons --owner <username> [--dry-run]
+docker compose exec web python manage.py import_inventory /patrons --owner <username> [--dry-run]
 ```
 
 Reads `inventaire-patrons-complet.csv`, `tableaux-tailles.csv`, `_moteur/taglist.json` and
@@ -51,8 +54,8 @@ left unspecified, never guessed.
 Then upload the pattern files (PDF, images, zip contents) to the media storage:
 
 ```bash
-uv run python manage.py import_files /path/to/Patrons --owner <username> --dry-run
-uv run python manage.py import_files /path/to/Patrons --owner <username> [--ref 12 ...]
+docker compose exec web python manage.py import_files /patrons --owner <username> --dry-run
+docker compose exec web python manage.py import_files /patrons --owner <username> [--ref 12 ...]
 ```
 
 Files are stored by content hash (identical files stored once, re-runs upload nothing new).
