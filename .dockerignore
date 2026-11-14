@@ -1,0 +1,9 @@
+.git
+.bare
+.venv
+.env
+media
+staticfiles
+**/__pycache__
+.pytest_cache
+.ruff_cache
