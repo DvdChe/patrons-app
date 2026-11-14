@@ -7,13 +7,20 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from apps.catalog.models import MEASURES, Brand, MeasureType
+from apps.catalog.models import MEASURES, Brand, MeasureType, Season
 from apps.catalog.presenters import MEASURE_LABELS, measure_range
 from apps.catalog.sizing import Chart
 
 from . import previews
 from .analysis import check_upload, create_job
-from .forms import ReviewForm, UploadForm, covers, initial_from_proposal, size_labels
+from .forms import (
+    ReviewForm,
+    UploadForm,
+    covers,
+    initial_from_proposal,
+    size_labels,
+    suggested_tag_ids,
+)
 from .models import IngestionJob
 
 PREVIEW_PX = 360
@@ -76,14 +83,21 @@ def review(request, pk: int):
             proposal["seam_allowance_source"], "lu dans le livret"
         )
         sources |= {"seam_allowance": seam, "seam_allowance_detail": seam}
+    if proposal.get("tags"):
+        sources["tags"] = "suggestions du livret en couleur : cliquez pour les retenir"
     yardage = proposal.get("yardage_hint")
+    season_labels = [str(Season(v).label) for v in proposal.get("seasons_hint", [])]
     context = {
         "job": job,
         "form": form,
         "sources": sources,
         "files": job.files.all(),
         "yardage_hint": f"Trouvé dans le livret (à vérifier) : « {yardage} »" if yardage else "",
+        "seasons_hint": "Le livret mentionne : " + ", ".join(season_labels)
+        if season_labels
+        else "",
         "config": _review_config(request, job),
+        "suggested_tags": suggested_tag_ids(proposal),
     }
     return render(request, "ingestion/review.html", context)
 

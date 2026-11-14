@@ -2,6 +2,7 @@
 
 import io
 import logging
+import re
 import subprocess
 from dataclasses import dataclass
 
@@ -28,10 +29,17 @@ class SourceFile:
     data: bytes
 
 
+def clean(text: str) -> str:
+    """PDFium text: CRLF line ends, U+FFFE (or soft hyphen) where a word was hyphenated at the
+    end of a line ("mou\ufffe\r\nvement"). Rejoin those words."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return re.sub(r"[\ufffe\u00ad]\n?", "", text)
+
+
 @dataclass
 class DocumentText:
     text: str = ""
-    first_page: str = ""
+    opening: str = ""  # first two pages with text: title, presentation
     pages: int = 0
     ocr_pages: int = 0
     unreadable: tuple[str, ...] = ()
@@ -59,6 +67,7 @@ def _ordered_pdfs(files: list[SourceFile]) -> list[tuple[SourceFile, PatternFile
 def read_text(files: list[SourceFile]) -> DocumentText:
     out = DocumentText()
     chunks: list[str] = []
+    opening_pages: list[str] = []
     unreadable = []
     for source, kind in _ordered_pdfs(files):
         try:
@@ -81,11 +90,13 @@ def read_text(files: list[SourceFile]) -> DocumentText:
                     text = ocr_image(image)
                     out.ocr_pages += 1
                 out.pages += 1
-                if not out.first_page and text.strip():
-                    out.first_page = text
+                text = clean(text)
+                if text.strip() and len(opening_pages) < 2:
+                    opening_pages.append(text)
                 chunks.append(text)
         finally:
             pdf.close()
     out.text = "\n".join(chunks)
+    out.opening = "\n".join(opening_pages)
     out.unreadable = tuple(unreadable)
     return out

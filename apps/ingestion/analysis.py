@@ -136,8 +136,10 @@ def analyse(job: IngestionJob) -> None:
         "seam_allowance_source": p.seam_allowance_source,
         "fabrics_raw": p.fabrics_raw,
         "fabric_kind": p.fabric_kind,
-        # Not reliable enough to pre-fill (see evaluate_extraction): shown as a hint only.
+        "tags": [f"{group}|{value}" for group, value in p.tags],
+        # Not reliable enough to pre-fill (see evaluate_extraction): shown as hints only.
         "yardage_hint": p.yardage_raw,
+        "seasons_hint": p.seasons,
         "ocr_pages": p.document.ocr_pages,
         "unreadable": list(p.document.unreadable),
     }

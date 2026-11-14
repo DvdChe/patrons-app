@@ -26,16 +26,17 @@ field name to where its pre-filled value comes from (review page only).{% endcom
       <label>Saison</label>
       <div class="row">{% for cb in form.seasons %}<label>{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}</div>
       <label>{{ form.seasons_inferred }} {{ form.seasons_inferred.label|capfirst }}</label>
+      {% if seasons_hint %}<span class="disc">{{ seasons_hint }} (non coché : souvent trompeur).</span>{% endif %}
     </div>
     {% include "catalog/_field.html" with field=form.seam_allowance source=sources.seam_allowance %}
     {% include "catalog/_field.html" with field=form.seam_allowance_detail source=sources.seam_allowance_detail hint="Ex. « 1 cm ; 2 cm aux ourlets »." %}
     {% include "catalog/_field.html" with field=form.seam_allowance_source source=sources.seam_allowance_source %}
   </div>
 
-  <h3>Détails</h3>
+  <h3>Détails{% if sources.tags %} <span class="src">{{ sources.tags }}</span>{% endif %}</h3>
   {% for group, boxes in form.tag_groups %}
     <details open><summary>{{ group }}</summary>
-      {% for cb in boxes %}<label class="tg">{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}
+      {% for cb in boxes %}<label class="tg{% if cb.data.value.value in suggested_tags %} sugg{% endif %}">{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}
     </details>
   {% endfor %}
   {% include "catalog/_field.html" with field=form.tags_source source=sources.tags_source %}

@@ -72,3 +72,4 @@ div.page{max-width:900px;margin:20px auto;background:var(--card);border:1px soli
 .grid td,.grid th{padding:2px 3px}
 button.link{border:0;background:none;color:var(--warn);text-decoration:underline;margin-left:auto}
 header a.add{margin-left:8px;padding:6px 10px;background:var(--acc);color:#fff;border-radius:6px;text-decoration:none;font-size:13px}
+.tg.sugg{border-color:var(--acc);background:var(--acc2);font-weight:600}

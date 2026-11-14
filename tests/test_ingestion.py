@@ -19,6 +19,7 @@ from apps.catalog.models import (
     SeamAllowance,
     SizeChart,
     SizeChartRow,
+    Tag,
 )
 from apps.ingestion.models import IngestionJob
 
@@ -33,6 +34,7 @@ BOOKLET = make_pdf(
             "Niveau couture : intermédiaire",
             "Les marges de couture de 1 cm sont incluses.",
             "Tissus conseillés : viscose, crêpe, lin.",
+            "Les manches raglan et l'encolure en V.",
             "Métrage : 2,10 m en laize 140.",
         ],
         ["Page 2 : montage"],
@@ -159,7 +161,17 @@ class TestUpload:
 
 class TestReview:
     def test_form_is_prefilled_with_sources(self, logged, job):
+        raglan = Tag.objects.create(group="Manches", value="raglan")
+        Tag.objects.create(group="Manches", value="courtes")
+        job.refresh_from_db()
         html = logged.get(f"/imports/{job.pk}/").content.decode()
+        assert job.proposal["tags"] == ["Manches|raglan", "Col / encolure|encolure V"]
+        # suggested tag highlighted, not checked
+        assert (
+            f'class="tg sugg"><input type="checkbox" name="tags" value="{raglan.pk}"'
+            in html.replace("\n", "")
+        )
+        assert "checked" not in html.split(f'value="{raglan.pk}"')[1].split(">")[0]
         assert 'value="34 – 46"' in html
         assert "lu dans le livret" in html
         assert "Trouvé dans le livret (à vérifier)" in html  # yardage hint, not pre-filled

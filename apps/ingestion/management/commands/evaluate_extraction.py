@@ -91,6 +91,11 @@ CHECKS = {
         lambda t, p: abs(p.yardage_max_m - t.yardage_max_m) <= Decimal("0.1"),
     ),
     "fabric kind": _same("fabric_kind", FabricKind.UNSPECIFIED),
+    "seasons": (
+        lambda t, p: bool(t.seasons),
+        lambda t, p: bool(p.seasons),
+        lambda t, p: set(p.seasons) == set(t.seasons),
+    ),
 }
 
 
@@ -128,6 +133,8 @@ class Command(BaseCommand):
             shared[p.legacy_location] += 1
 
         stats = defaultdict(lambda: [0, 0, 0])  # known, proposed, correct
+        tag_stats = defaultdict(lambda: [0, 0])  # tag -> [proposed, correct]
+        tag_truth = 0
         mismatches = []
         done = ocr_pages = 0
         started = time.monotonic()
@@ -140,6 +147,12 @@ class Command(BaseCommand):
             proposal = propose(files, brands, rules)
             done += 1
             ocr_pages += proposal.document.ocr_pages
+            if pattern.tags_source:  # tags were filled for this pattern
+                truth = {(t.group, t.value) for t in pattern.tags.all()}
+                tag_truth += len(truth)
+                for tag in proposal.tags:
+                    tag_stats[tag][0] += 1
+                    tag_stats[tag][1] += tag in truth
             for field, (known, proposed, correct) in CHECKS.items():
                 if not known(pattern, proposal):
                     continue
@@ -167,6 +180,19 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"{field:22} {known:6} {proposed:9} {correct:8} {precision:>10} {recall:>7}"
             )
+        proposed = sum(v[0] for v in tag_stats.values())
+        correct = sum(v[1] for v in tag_stats.values())
+        precision = correct / proposed if proposed else 0
+        recall = correct / tag_truth if tag_truth else 0
+        self.stdout.write(
+            f"{'tags (each)':22} {tag_truth:6} {proposed:9} {correct:8} "
+            f"{precision:>10.0%} {recall:>7.0%}"
+        )
+        if errors == "tags":
+            for (group, value), (n_prop, n_ok) in sorted(
+                tag_stats.items(), key=lambda kv: kv[1][1] / kv[1][0]
+            ):
+                self.stdout.write(f"   {n_ok:3}/{n_prop:3} {group} : {value}")
         for kind, pattern, proposal in mismatches:
             self.stdout.write(
                 f"\n✗ {kind}: {pattern.name} ({pattern.brand.name}) — {pattern.legacy_location}"

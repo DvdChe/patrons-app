@@ -15,6 +15,7 @@ from apps.catalog.models import (
     PatternFile,
     SizeChart,
     SizeChartRow,
+    Tag,
 )
 
 from . import previews
@@ -195,7 +196,15 @@ def initial_from_proposal(proposal: dict) -> dict:
     elif proposal.get("new_brand"):
         initial["new_brand"] = proposal["new_brand"]
     initial["brand_confidence"] = "certain" if proposal.get("brand") else "unknown"
+
     return initial
+
+
+def suggested_tag_ids(proposal: dict) -> set[int]:
+    """Tags found in the booklet: highlighted on the review form, not checked (about 2 in 3
+    are right, see evaluate_extraction)."""
+    wanted = {tuple(t.split("|", 1)) for t in proposal.get("tags", [])}
+    return {t.pk for t in Tag.objects.all() if (t.group, t.value) in wanted}
 
 
 def size_labels(size_range: str) -> list[str]:

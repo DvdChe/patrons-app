@@ -52,7 +52,7 @@ def test_difficulty(text, expected):
     ("text", "raw"),
     [
         ("Niveau : débutant\nLes marges de couture de 1 cm sont incluses", "Débutant"),
-        ("Simple comme bonjour NIVEAU / LEVEL :", "simple comme bonjour"),
+        ("Simple comme bonjour NIVEAU / LEVEL :", "« Simple comme bonjour »"),
         ("Difficulté : 3/5 (ciseaux)", "3/5"),
     ],
 )
@@ -184,3 +184,69 @@ def test_brand_prefers_file_names_and_aliases():
 )
 def test_copyright_holder(raw, expected):
     assert x.copyright_holder(raw) == expected
+
+
+def test_original_restores_accents_and_capitals():
+    raw = "Tissus conseillés : une toile de coton,\nun crêpe ou de l’étamine."
+    prepared, index = x.prepare_map(raw)
+    assert prepared == x.prepare(raw)
+    assert (
+        x.original(raw, prepared, index, "un crepe ou de l etamine") == "un crêpe ou de l’étamine"
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("HENDRIKS\nTaille / Size : 34-48\nVoici Hendriks, l’historique trench", "Hendriks"),
+        ("MAKE MY LEMONADE | PATRON DE COUTURE HENDRIKS", "Hendriks"),
+        ("Meet Juniper, a relaxed shirt dress", "Juniper"),
+        ("Voici la robe Cosmos, fluide et légère", "Cosmos"),
+        ("Bonjour ! Voici le nouveau patron", ""),
+    ],
+)
+def test_name_from_text(raw, expected):
+    assert x.name_from_text(raw, brand_words={"make", "my", "lemonade"}) == expected
+
+
+@pytest.mark.parametrize(
+    ("opening", "family"),
+    [
+        ("Voici Hendriks, l’historique trench, avec des manches raglan", Family.OUTERWEAR),
+        ("Un caban croisé", Family.OUTERWEAR),
+        ("Ce legging taille haute", Family.BOTTOMS),
+    ],
+)
+def test_garment_type_from_opening(opening, family):
+    assert x.garment_type("", x.prepare(opening))[1] == family
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Hendriks est doublé, pour pouvoir être porté tout l’hiver !", ["winter"]),
+        ("Idéale pour l’été et les beaux jours", ["summer"]),
+        ("À porter toute l’année", ["all"]),
+        ("Couper le tissu", []),
+    ],
+)
+def test_seasons(text, expected):
+    assert x.seasons(x.prepare(text)) == expected
+
+
+def test_tags():
+    text = x.prepare(
+        "Vous retrouverez les manches raglans. Encolure en V. Fermeture par boutons pression. "
+        "La taille est élastique."
+    )
+    assert set(x.tags(text)) == {
+        ("Manches", "raglan"),
+        ("Col / encolure", "encolure V"),
+        ("Fermeture", "pressions / boutons pression"),
+        ("Taille", "taille élastique"),
+    }
+
+
+def test_difficulty_raw_phrase_is_quoted_and_capitalised():
+    text = x.prepare("Niveau / Level : « Tout va bien se passer » « Everything is gonna be okay »")
+    assert x.difficulty(text)[1] == "« Tout va bien se passer »"

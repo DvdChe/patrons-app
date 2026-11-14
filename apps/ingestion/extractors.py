@@ -14,11 +14,45 @@ from apps.catalog import normalize as n
 from apps.catalog.models import Audience, Difficulty, FabricKind, Family, SeamAllowance
 
 
+def prepare_map(text: str) -> tuple[str, list[int]]:
+    """Prepared text (see `prepare`) and, for each of its characters, its index in `text`, so
+    that a snippet found in the prepared text can be shown as originally written."""
+    out: list[str] = []
+    index: list[int] = []
+    space = True  # drop leading whitespace
+    for i, ch in enumerate(text):
+        if ch in "'’`":
+            ch = " "
+        decomposed = unicodedata.normalize("NFKD", ch)
+        for c in decomposed.lower():
+            if unicodedata.combining(c):
+                continue
+            if c.isspace():
+                if space:
+                    continue
+                c, space = " ", True
+            else:
+                space = False
+            out.append(c)
+            index.append(i)
+    if out and out[-1] == " ":
+        out.pop()
+        index.pop()
+    return "".join(out), index
+
+
 def prepare(text: str) -> str:
-    text = re.sub(r"['’`]", " ", text)
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(c for c in text if not unicodedata.combining(c))
-    return re.sub(r"\s+", " ", text.lower()).strip()
+    """Lowercase, accent-free, apostrophes as spaces, whitespace collapsed."""
+    return prepare_map(text)[0]
+
+
+def original(raw: str, prepared: str, index: list[int], snippet: str) -> str:
+    """The raw text behind a snippet of the prepared text (accents, capitals), one line."""
+    pos = prepared.find(snippet) if snippet else -1
+    if pos < 0:
+        return snippet
+    start, end = index[pos], index[pos + len(snippet) - 1] + 1
+    return re.sub(r"\s+", " ", raw[start:end]).strip()
 
 
 def _num(text: str) -> Decimal | None:
@@ -94,8 +128,12 @@ def _level_words(snippet: str, level: Difficulty, from_end: bool) -> str:
     for size in range(1, len(words) + 1):
         part = words[-size:] if from_end else words[:size]
         if n.difficulty(" ".join(part)) == level:
-            text = " ".join(part).strip(" :/!.")
-            return str(level.label) if size == 1 and not re.search(r"\d", text) else text
+            text = " ".join(part).strip(" :/!.«»")
+            if re.search(r"\d", text):
+                return text  # a score such as "3/5"
+            if size == 1:
+                return str(level.label)  # keeps the accents of "Débutant"
+            return f"« {text[0].upper()}{text[1:]} »"  # a brand phrase
     return snippet.strip()[:60]
 
 
@@ -158,7 +196,7 @@ def yardage(text: str) -> tuple[str, Decimal | None]:
         for width, segment in _segments_by_width(window):
             found = _lengths(segment)
             if found and not snippet:
-                snippet = window.strip()
+                snippet = text[m.start() : m.end() + 220].strip()
             if width is None:
                 no_width += found
             elif TARGET_WIDTH_CM[0] <= width <= TARGET_WIDTH_CM[1]:
@@ -277,19 +315,25 @@ _TYPE_WORDS = [
     ("combishort", "Combishort"), ("combinaison", "Combinaison"), ("jumpsuit", "Combinaison"),
     ("salopette", "Salopette"), ("dungarees", "Salopette"), ("robe", "Robe"), ("dress", "Robe"),
     ("jupe", "Jupe"), ("skirt", "Jupe"), ("pantalon", "Pantalon"), ("trousers", "Pantalon"),
-    ("pants", "Pantalon"), ("jean", "Jean"), ("short", "Short"), ("shorts", "Short"),
-    ("blouse", "Blouse"), ("chemise", "Chemise"), ("shirt", "Chemise"), ("tunique", "Tunique"),
-    ("top", "Top"), ("t-shirt", "T-shirt"), ("tee", "T-shirt"), ("veste", "Veste"),
-    ("jacket", "Veste"), ("manteau", "Manteau"), ("coat", "Manteau"), ("gilet", "Gilet"),
-    ("cardigan", "Cardigan"), ("pull", "Pull"), ("sweater", "Pull"), ("sweat", "Sweat"),
-    ("sweatshirt", "Sweat"), ("hoodie", "Sweat"), ("sac", "Sac"), ("bag", "Sac"),
-    ("pyjama", "Pyjama"), ("culotte", "Culotte"), ("body", "Body"), ("kimono", "Kimono"),
+    ("pants", "Pantalon"), ("legging", "Pantalon"), ("jogging", "Pantalon"), ("jean", "Jean"),
+    ("short", "Short"), ("shorts", "Short"), ("bermuda", "Short"), ("blouse", "Blouse"),
+    ("chemise", "Chemise"), ("shirt", "Chemise"), ("tunique", "Tunique"), ("top", "Top"),
+    ("t-shirt", "T-shirt"), ("tee", "T-shirt"), ("veste", "Veste"), ("jacket", "Veste"),
+    ("blazer", "Veste"), ("manteau", "Manteau"), ("coat", "Manteau"), ("trench", "Trench"),
+    ("parka", "Parka"), ("caban", "Manteau"), ("doudoune", "Manteau"), ("blouson", "Blouson"),
+    ("bomber", "Bomber"), ("kimono", "Kimono"), ("cape", "Cape"), ("poncho", "Cape"),
+    ("gilet", "Gilet"), ("cardigan", "Cardigan"), ("pull", "Pull"), ("sweater", "Pull"),
+    ("sweat", "Sweat"), ("sweatshirt", "Sweat"), ("hoodie", "Sweat"), ("sac", "Sac"),
+    ("bag", "Sac"), ("tote", "Sac"), ("pochette", "Pochette"), ("trousse", "Pochette"),
+    ("tablier", "Tablier"), ("apron", "Tablier"), ("pyjama", "Pyjama"), ("culotte", "Culotte"),
+    ("body", "Body"), ("maillot", "Maillot de bain"), ("soutien-gorge", "Soutien-gorge"),
+    ("brassiere", "Soutien-gorge"), ("nuisette", "Nuisette (lingerie)"),
 ]  # fmt: skip
 
 
-def garment_type(label: str, first_page: str) -> tuple[str, Family]:
-    """Garment type from the name, else from the first page; the earliest word wins."""
-    for source in (prepare(label), first_page[:1500]):
+def garment_type(label: str, opening: str) -> tuple[str, Family]:
+    """Garment type from the name, else from the opening pages; the earliest word wins."""
+    for source in (prepare(label), opening[:3000]):
         hits = [
             (m.start(), value)
             for word, value in _TYPE_WORDS
@@ -299,6 +343,105 @@ def garment_type(label: str, first_page: str) -> tuple[str, Family]:
             value = min(hits)[1]
             return value, n.family(value)
     return "", Family.UNCLASSIFIED
+
+
+_UPPER = "A-ZÀ-ÖØ-Þ"
+_WORD = "A-Za-zÀ-ÖØ-öø-ÿ"
+_NAME_IN_TEXT = [
+    # "PATRON DE COUTURE HENDRIKS", "Sewing pattern: Juniper"
+    rf"(?i:patron de couture|sewing pattern)\s*[:\-–]?\s*([{_UPPER}][{_WORD}'’-]{{2,30}})",
+    # "Voici Hendriks", "Voici la robe Cosmos", "Meet Juniper"
+    rf"\b(?:Voici|Voilà|Découvrez|Meet|Introducing)\s+(?:(?:la|le|les|l’|l')\s*)?"
+    rf"(?:(?:robe|jupe|blouse|chemise|veste|combinaison|pantalon|top|manteau|nouvelle|nouveau)\s+)?"
+    rf"([{_UPPER}][{_WORD}'’-]{{2,30}})",
+]
+_NOT_NAMES = {"le", "la", "les", "notre", "votre", "patron", "pattern", "this", "the", "nouveau"}
+
+
+def name_from_text(raw_text: str, brand_words: set[str]) -> str:
+    """Pattern name as written in the booklet; the most frequent candidate wins."""
+    found: list[str] = []
+    for rx in _NAME_IN_TEXT:
+        for m in re.finditer(rx, raw_text[:20000]):
+            word = m.group(1).strip("'’-")
+            key = prepare(word)
+            if (
+                key not in _NOT_NAMES
+                and key not in brand_words
+                and not any(key == w for w, _ in _TYPE_WORDS)
+            ):
+                found.append(word[0].upper() + word[1:].lower())
+    return max(set(found), key=lambda w: (found.count(w), -found.index(w))) if found else ""
+
+
+_SEASON_WORDS = [
+    ("all", r"toute l annee|toutes saisons|all year|year round"),
+    ("winter", r"\bhiver|hivernal|\bwinter\b"),
+    ("summer", r"\bete\b|estival|beaux jours|\bsummer\b"),
+    ("midseason", r"mi-saison|\bprintemps|\bautomne|\bspring\b|\bautumn\b"),
+]
+
+
+def seasons(text: str) -> list[str]:
+    """Seasons named in the booklet (to be marked as inferred). "All year" wins alone."""
+    found = [season for season, rx in _SEASON_WORDS if re.search(rx, text)]
+    return ["all"] if "all" in found else found
+
+
+# Measured with evaluate_extraction (150 patterns, seed 3): tags whose wording proved
+# misleading were removed (gathered/drawstring, bustier, cargo, invisible zip, midi, maxi, wrap,
+# shirt collar, puff sleeves, sleeveless, oversize: below 60 % precision).
+TAG_RULES: dict[tuple[str, str], str] = {
+    ("Manches", "courtes"): r"manches? courtes?|short sleeves?",
+    ("Manches", "longues"): r"manches? longues?|long sleeves?",
+    ("Manches", "3/4"): r"manches? 3/4|3/4 sleeves?",
+    ("Manches", "raglan"): r"raglan",
+    ("Manches", "kimono / chauve-souris"): r"manches? kimono|chauve-souris|batwing",
+    ("Manches", "volantées"): r"manches? volantees?|flutter sleeves?",
+    ("Manches", "mancherons"): r"mancherons?|cap sleeves?",
+    ("Manches", "manches tombantes"): r"epaules? tombantes?|dropped? shoulders?",
+    ("Col / encolure", "col Claudine"): r"col claudine|peter pan collar",
+    ("Col / encolure", "col mao"): r"col mao|mandarin collar",
+    ("Col / encolure", "col roulé"): r"col roule|turtleneck|roll neck",
+    (
+        "Col / encolure",
+        "col cubain / à revers",
+    ): r"col cubain|col a revers|revere collar|camp collar",
+    ("Col / encolure", "encolure V"): r"encolure (?:en )?v\b|decollete (?:en )?v\b|v-neck",
+    ("Col / encolure", "encolure carrée"): r"encolure carree|square neck",
+    ("Col / encolure", "encolure bateau"): r"encolure bateau|boat neck",
+    ("Col / encolure", "cache-cœur"): r"cache-coeur|cache coeur",
+    ("Col / encolure", "dos nu"): r"\bdos nu\b|backless",
+    ("Col / encolure", "capuche"): r"capuche|\bhood\b",
+    (
+        "Fermeture",
+        "boutons devant",
+    ): r"boutonnage devant|boutons? (?:sur le |au )?devant|button front",
+    (
+        "Fermeture",
+        "zip invisible côté",
+    ): r"(?:fermeture|zip) (?:a glissiere )?invisible|invisible zip",
+    ("Fermeture", "pressions / boutons pression"): r"boutons? pression|\bpressions\b|\bsnaps\b",
+    ("Fermeture", "nouée"): r"\bnouee?s?\b|se noue|self-tie|tie front",
+    (
+        "Taille",
+        "taille élastique",
+    ): r"(?:ceinture|taille) (?:est )?elastique|elastic(?:ated)? waist",
+    ("Taille", "taille smockée"): r"smock",
+    ("Taille", "taille empire"): r"taille empire|empire waist",
+    ("Taille", "ceinture paperbag"): r"paper ?bag",
+    ("Jambe", "jambe large"): r"jambes? larges?|wide[- ]leg",
+    ("Jambe", "fuselée"): r"fusele|tapered",
+    ("Jambe", "barrel"): r"\bbarrel\b",
+    ("Longueur", "crop"): r"\bcrop",
+    ("Coupe", "trapèze"): r"trapeze|a-line",
+}
+
+
+def tags(text: str) -> list[tuple[str, str]]:
+    """Detail tags whose wording appears in the booklet (to check: a booklet may mention an
+    option that is not part of this pattern)."""
+    return [tag for tag, rx in TAG_RULES.items() if re.search(rx, text)]
 
 
 _COPYRIGHT = re.compile(
