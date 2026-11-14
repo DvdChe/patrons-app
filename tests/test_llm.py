@@ -38,7 +38,7 @@ def fake_ollama(monkeypatch, settings):
             body = {"message": {"content": json.dumps(answer)}, "total_duration": 2_000_000_000}
             return io.BytesIO(json.dumps(body).encode())
 
-        monkeypatch.setattr(llm.urllib.request, "urlopen", urlopen)
+        monkeypatch.setattr("urllib.request.urlopen", urlopen)
 
     return respond, calls
 
@@ -94,3 +94,22 @@ def test_llm_only_fills_what_the_rules_left_empty(db, fake_ollama):
     assert p.fabrics_raw == "drap de laine, tweed"
     assert p.yardage_max_m is None  # never pre-filled, kept on p.llm for hints
     assert p.llm.yardage_m == D("4.55")
+
+
+def test_drawing_tags_keeps_taxonomy_values_only(db, fake_ollama):
+    from PIL import Image
+
+    from apps.ingestion import vision
+
+    respond, calls = fake_ollama
+    Tag.objects.create(group="Manches", value="courtes")
+    Tag.objects.create(group="Manches", value="longues")
+    Tag.objects.create(group="Coupe", value="droite")
+    respond({"Manches": ["courtes", "courtes", "inventée"], "Coupe": "droite"})  # bad type
+
+    answer = vision.drawing_tags(Image.new("RGB", (2000, 1000), "white"))
+
+    assert answer.tags == [("Manches", "courtes")]
+    sent = calls[0]
+    assert sent["messages"][0]["images"]  # base64 PNG, resized
+    assert sent["format"]["properties"]["Manches"]["maxItems"] == 2
