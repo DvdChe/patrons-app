@@ -54,9 +54,13 @@ def family(garment_type: str) -> Family:
     return Family.UNCLASSIFIED
 
 
-_INTERMEDIATE_WORDS = r"intermediaire|concentr|vaut le coup|patience|moyen|average|long"
+_ADVANCED_START = r"\W*(avance|difficile|confirme|pas froid aux yeux)"
+_INTERMEDIATE_WORDS = (
+    r"intermediaire|concentr|vaut le coup|patience|moyen|average|long|doucement mais surement"
+)
 _BEGINNER_WORDS = (
-    r"debutant|facile|gateau|tarte|rien de tres|tout va bien|pas de souci|easy|beginner"
+    r"debutant|facile|gateau|tarte|rien de tres|va bien se passer|pas de souci|easy|beginner"
+    r"|simple comme bonjour|tranquille|ideal pour une 1ere fois|legeres notions"
 )
 
 
@@ -71,7 +75,8 @@ def difficulty(raw: str) -> Difficulty:
         if ratio <= 0.5:
             return Difficulty.BEGINNER
         return Difficulty.INTERMEDIATE if ratio < 0.8 else Difficulty.ADVANCED
-    if re.match(r"\W*(avance|difficile)", x):
+    # Anchored: "Débutant confirmé" must stay beginner.
+    if re.match(_ADVANCED_START, x):
         return Difficulty.ADVANCED
     # "Débutant / intermédiaire" stays beginner: the first word decides.
     if re.search(_INTERMEDIATE_WORDS, x) and not re.match(r"\W*debutant", x):

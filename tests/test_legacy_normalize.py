@@ -93,6 +93,16 @@ def test_family(garment_type, expected):
         ("Intermédiaire avancé", Difficulty.INTERMEDIATE),
         ("Ultra-débutant", Difficulty.BEGINNER),
         ("4 points (échelle graphique)", Difficulty.UNSPECIFIED),
+        ("4 cœurs (échelle non précisée)", Difficulty.UNSPECIFIED),
+        # Phrasings missing from the MVP rules, mapping agreed on 2026-11-14
+        ("« Simple comme bonjour ! »", Difficulty.BEGINNER),
+        ("« Tranquille Émile ! »", Difficulty.BEGINNER),
+        ("« Idéal pour une 1ère fois ! »", Difficulty.BEGINNER),
+        ("« Ça va bien se passer »", Difficulty.BEGINNER),
+        ("Légères notions de couture exigées", Difficulty.BEGINNER),
+        ("« Doucement mais sûrement ! »", Difficulty.INTERMEDIATE),
+        ("« Pas froid aux yeux ! »", Difficulty.ADVANCED),
+        ("Confirmé", Difficulty.ADVANCED),
     ],
 )
 def test_difficulty(raw, expected):
