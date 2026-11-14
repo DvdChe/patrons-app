@@ -40,6 +40,17 @@ variables for media storage. Health endpoint: `/healthz`.
 See `apps/catalog/models.py`. Pattern files and inventory CSVs are never stored in this
 repository (copyrighted material and personal data).
 
+## Adding a pattern
+
+"＋ Ajouter un patron" in the catalogue: upload the downloaded zip or the PDFs/images, the
+booklet is read (embedded text, OCR for scanned pages) and a review form is pre-filled.
+Nothing is created before the review is validated. Extraction accuracy is measured against
+the MVP inventory with:
+
+```bash
+docker compose exec web python manage.py evaluate_extraction /patrons --owner <username> --sample 100
+```
+
 ## Importing the MVP inventory
 
 ```bash

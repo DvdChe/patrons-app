@@ -37,6 +37,56 @@ def login(page: Page) -> None:
     page.wait_for_selector(".card")
 
 
+def add_pattern(page: Page) -> None:
+    """Upload a generated booklet, review it, create the pattern, then delete it."""
+    from tests.pdfs import make_pdf
+
+    booklet = make_pdf(
+        [
+            ["Robe E2E Test", "Taille / Size : 36-44", "Niveau : débutant",
+             "Les marges de couture de 1 cm sont incluses."],
+            ["Montage"],
+        ]
+    )  # fmt: skip
+    page.click("text=Ajouter un patron")
+    page.set_input_files(
+        "input[type=file]",
+        files=[{"name": "Livret E2E Test.pdf", "mimeType": "application/pdf", "buffer": booklet}],
+    )
+    page.click("button.primary")
+    page.wait_for_selector("text=vérifiez la fiche", timeout=60_000)
+    check("size range pre-filled", page.input_value("#id_size_range") == "36 – 44")
+    check("seam allowance pre-filled", page.input_value("#id_seam_allowance") == "included")
+    page.fill("#id_name", "E2E Test")
+    if not page.input_value("#id_brand"):
+        page.fill("#id_new_brand", "Marque E2E")
+    page.locator(".cands img").first.click()
+    page.wait_for_function("document.querySelector('.cropper img')?.complete")
+    box = page.locator(".cropper").bounding_box()
+    page.mouse.move(box["x"] + 20, box["y"] + 20)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=5)
+    page.mouse.up()
+    crop = page.input_value("input[name=crop]")
+    check("crop drawn", crop not in ("", "0.0000,0.0000,1.0000,1.0000"), crop)
+    page.screenshot(path=OUT / "review.png", full_page=True)
+    page.click("text=Créer le patron")
+    page.wait_for_load_state()
+    if "/imports/" in page.url:
+        check("review form accepted", False, page.locator("p.warn, .field.err").all_inner_texts())
+        return
+    page.wait_for_selector("#modal h2")
+    check("new pattern sheet opens", "E2E Test" in page.inner_text("#modal h2"))
+    check("new pattern has its file", "Livret E2E Test.pdf" in page.inner_text("#modal .files"))
+    page.click("text=Modifier la fiche")
+    page.click("text=Supprimer le patron…")
+    page.click("button.danger")
+    page.wait_for_selector(".card")
+    page.fill("#q", "E2E Test")
+    page.wait_for_timeout(300)
+    check("test pattern deleted", count(page) == 0)
+
+
 def main() -> int:
     OUT.mkdir(exist_ok=True)
     with sync_playwright() as pw:
@@ -114,6 +164,8 @@ def main() -> int:
         check("edit page renders", "Modifier" in page.inner_text("form.page h2"))
         page.go_back()
         page.wait_for_selector(".card")
+
+        add_pattern(page)
         browser.close()
 
     check("no JavaScript errors", not errors, errors)

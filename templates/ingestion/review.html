@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Nouveau patron — Moteur de patrons{% endblock %}
+{% block head %}
+<script defer src="{% static 'ingestion/review.js' %}"></script>
+<script defer src="{% static 'vendor/alpine.min.js' %}"></script>
+{% endblock %}
+{% block body %}
+{% include "catalog/_page_header.html" %}
+{{ config|json_script:"review-config" }}
+<form class="page" method="post" x-data="review" @submit="serialize()">
+  {% csrf_token %}
+  <h2>Nouveau patron : vérifiez la fiche</h2>
+  {% if form.errors %}<p class="warn">Corrigez les champs signalés.{% for e in form.non_field_errors %} {{ e }}{% endfor %}</p>{% endif %}
+  <p class="disc">Les valeurs marquées ont été lues automatiquement : vérifiez-les. Le métrage n’est jamais pré-rempli (trop souvent faux) : l’extrait trouvé est indiqué sous le champ.</p>
+
+  <h3>Fichiers</h3>
+  <ul class="files-list">
+    {% for f in files %}<li>{{ f.original_name }} <span class="disc">{{ f.get_kind_display }} · {{ f.size|filesizeformat }}</span></li>{% endfor %}
+  </ul>
+  {% if job.proposal.ocr_pages %}<p class="disc">{{ job.proposal.ocr_pages }} page(s) scannée(s) lue(s) par reconnaissance de texte : vérifiez particulièrement les valeurs.</p>{% endif %}
+  {% if job.proposal.unreadable %}<p class="warn">Illisible(s) : {{ job.proposal.unreadable|join:", " }}</p>{% endif %}
+
+  {% include "catalog/_pattern_fields.html" %}
+
+  <h3>Vignette</h3>
+  <input type="hidden" name="thumbnail_ref" :value="thumbRef">
+  <input type="hidden" name="crop" :value="cropValue()">
+  <template x-if="!candidates.length"><p class="disc">Aucune page ni image utilisable : vous pourrez ajouter une vignette en modifiant la fiche.</p></template>
+  <p class="disc" x-show="candidates.length">Choisissez le dessin technique (ou une photo), puis tracez un rectangle sur l’image pour recadrer.</p>
+  <div class="cands">
+    <template x-for="c in candidates" :key="c.ref">
+      <img :src="c.small" :class="{on: c.ref === thumbRef}" @click="pick(c)" loading="lazy" alt="">
+    </template>
+  </div>
+  <template x-if="selected">
+    <div>
+      <div class="cropper" @pointerdown.prevent="cropStart($event)" @pointermove="cropMove($event)" @pointerup="cropEnd()" @pointercancel="cropEnd()">
+        <img :src="selected.large" alt="" draggable="false">
+        <div class="cropbox" :style="cropStyle()"></div>
+      </div>
+      <button type="button" @click="resetCrop()">Toute la page</button>
+      <button type="button" @click="thumbRef = ''; selected = null">Pas de vignette</button>
+    </div>
+  </template>
+
+  <h3>Tableau de tailles</h3>
+  <input type="hidden" name="brand_charts" :value="JSON.stringify(chosenCharts)">
+  <input type="hidden" name="size_chart" :value="JSON.stringify(rows)">
+  <template x-if="charts.length">
+    <div>
+      <p class="disc">Tableaux de la marque : cochez ceux qui s’appliquent à ce patron.</p>
+      <template x-for="c in charts" :key="c.id">
+        <details class="sz">
+          <summary>
+            <label @click.stop><input type="checkbox" :value="c.id" :checked="chosenCharts.includes(c.id)" @change="toggleChart(c.id)">
+              <span x-text="c.type + ' — tailles ' + c.labels[0] + ' à ' + c.labels[c.labels.length - 1]"></span></label>
+            <span class="src" x-show="c.covers">couvre les tailles du patron</span>
+          </summary>
+          <table><tr><th>Taille</th><template x-for="m in c.measures"><th x-text="m"></th></template></tr>
+            <template x-for="r in c.rows"><tr><template x-for="v in r"><td x-text="v"></td></template></tr></template>
+          </table>
+        </details>
+      </template>
+    </div>
+  </template>
+  <details class="sz" :open="!chosenCharts.length">
+    <summary>Tableau propre au patron (mensurations du corps)</summary>
+    <p class="disc">Une ligne par taille. Mesures en cm ; une fourchette s’écrit « 80-84 ». Laissez vide si le livret n’en donne pas.</p>
+    <div class="gridwrap">
+      <table class="grid">
+        <tr><th>Taille</th><template x-for="m in measures"><th x-text="m.label"></th></template><th></th></tr>
+        <template x-for="(r, i) in rows" :key="i">
+          <tr>
+            <td><input type="text" x-model="r.label" size="6"></td>
+            <template x-for="m in measures"><td><input type="text" inputmode="decimal" x-model="r[m.key]" size="5"></td></template>
+            <td><button type="button" @click="rows.splice(i, 1)" title="Supprimer la ligne">×</button></td>
+          </tr>
+        </template>
+      </table>
+    </div>
+    <button type="button" @click="addRow()">Ajouter une taille</button>
+  </details>
+
+  <div class="actions">
+    <button type="submit" class="primary">Créer le patron</button>
+    <button type="submit" form="discard" class="link">Abandonner cet ajout</button>
+  </div>
+</form>
+<form id="discard" method="post" action="{% url 'ingestion:discard' job.pk %}" onsubmit="return confirm('Abandonner cet ajout ? Les fichiers envoyés ne seront pas conservés.')">{% csrf_token %}</form>
+{% endblock %}

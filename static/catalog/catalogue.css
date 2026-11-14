@@ -58,3 +58,17 @@ a.danger{margin-left:auto;color:var(--warn)}button.danger{background:var(--warn)
 textarea.notes{width:100%;min-height:60px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;font:inherit}
 .sewn-badge{display:inline-block;margin-top:3px;font-size:11px;color:var(--ok);font-weight:600}
 @media(max-width:800px){.grid2{grid-template-columns:1fr}}
+/* ---- add a pattern */
+.src{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:var(--acc2);color:var(--acc);font-size:11px;font-weight:600}
+div.page{max-width:900px;margin:20px auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 22px}
+.pending{list-style:none;padding:0}.pending li{display:flex;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.pending form{margin-left:auto}
+.files-list{margin:0;padding-left:18px;font-size:13px}
+.cands{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.cands img{height:120px;border:2px solid var(--line);border-radius:4px;cursor:pointer;background:#fff}.cands img.on{border-color:var(--acc)}
+.cropper{position:relative;display:inline-block;max-width:100%;margin:8px 0;overflow:hidden;cursor:crosshair;touch-action:none;user-select:none}
+.cropper img{display:block;max-width:100%;max-height:70vh}
+.cropbox{position:absolute;border:2px dashed var(--acc);box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
+.gridwrap{overflow-x:auto}.grid input{width:60px;padding:3px 4px;border:1px solid var(--line);border-radius:4px}
+.grid td,.grid th{padding:2px 3px}
+button.link{border:0;background:none;color:var(--warn);text-decoration:underline;margin-left:auto}
+header a.add{margin-left:8px;padding:6px 10px;background:var(--acc);color:#fff;border-radius:6px;text-decoration:none;font-size:13px}

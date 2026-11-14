@@ -83,8 +83,20 @@ def difficulty(text: str) -> tuple[Difficulty, str]:
         for snippet in (after, before):
             level = n.difficulty(snippet)
             if level != Difficulty.UNSPECIFIED:
-                return level, snippet.strip()[:60]
+                return level, _level_words(snippet, level, from_end=snippet is before)
     return Difficulty.UNSPECIFIED, ""
+
+
+def _level_words(snippet: str, level: Difficulty, from_end: bool) -> str:
+    """The few words that carry the level ("simple comme bonjour"), not the whole snippet.
+    A single word ("debutant") is replaced by the level label, which keeps its accents."""
+    words = snippet.split()
+    for size in range(1, len(words) + 1):
+        part = words[-size:] if from_end else words[:size]
+        if n.difficulty(" ".join(part)) == level:
+            text = " ".join(part).strip(" :/!.")
+            return str(level.label) if size == 1 and not re.search(r"\d", text) else text
+    return snippet.strip()[:60]
 
 
 # ---- seam allowance

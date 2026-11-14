@@ -49,6 +49,18 @@ def test_difficulty(text, expected):
 
 
 @pytest.mark.parametrize(
+    ("text", "raw"),
+    [
+        ("Niveau : débutant\nLes marges de couture de 1 cm sont incluses", "Débutant"),
+        ("Simple comme bonjour NIVEAU / LEVEL :", "simple comme bonjour"),
+        ("Difficulté : 3/5 (ciseaux)", "3/5"),
+    ],
+)
+def test_difficulty_raw_keeps_only_the_level_words(text, raw):
+    assert x.difficulty(x.prepare(text))[1] == raw
+
+
+@pytest.mark.parametrize(
     ("text", "status", "detail"),
     [
         ("Marges de couture de 1cm incluses.", SeamAllowance.INCLUDED, "1 cm"),

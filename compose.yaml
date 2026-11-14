@@ -66,6 +66,7 @@ services:
     command: sh -c "pip install -q --root-user-action=ignore playwright==1.65.2 && python smoke.py"
     volumes:
       - ./e2e:/e2e
+      - ./tests:/e2e/tests:ro  # synthetic PDF generator
     depends_on:
       web:
         condition: service_healthy

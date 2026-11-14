@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Ajouter un patron — Moteur de patrons{% endblock %}
+{% block head %}<script defer src="{% load static %}{% static 'vendor/alpine.min.js' %}"></script>{% endblock %}
+{% block body %}
+{% include "catalog/_page_header.html" %}
+<form class="page" method="post" enctype="multipart/form-data" x-data="{busy: false}" @submit="busy = true">
+  {% csrf_token %}
+  <h2>Ajouter un patron</h2>
+  <p>Déposez les fichiers du patron tels que vous les avez téléchargés : le zip, ou le livret et les planches. Les informations (marque, tailles, niveau, marges…) sont lues dans le livret, puis vous les vérifiez avant d’enregistrer.</p>
+  {% include "catalog/_field.html" with field=form.files hint=form.files.help_text %}
+  <div class="actions">
+    <button type="submit" class="primary" :disabled="busy" x-text="busy ? 'Analyse en cours…' : 'Analyser les fichiers'">Analyser les fichiers</button>
+    <a href="{% url 'catalog:catalogue' %}">Retour au catalogue</a>
+  </div>
+  <p class="disc" x-show="busy" x-cloak>La lecture des livrets scannés peut prendre une trentaine de secondes.</p>
+</form>
+
+{% if pending %}
+<div class="page">
+  <h3>Ajouts à valider</h3>
+  <ul class="pending">
+    {% for job in pending %}
+    <li>
+      <a href="{% url 'ingestion:review' job.pk %}">{{ job }}</a>
+      <span class="disc">{{ job.files.all|length }} fichier(s), {{ job.created_at|date:"j F à H:i" }}</span>
+      <form method="post" action="{% url 'ingestion:discard' job.pk %}">{% csrf_token %}<button type="submit">Abandonner</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

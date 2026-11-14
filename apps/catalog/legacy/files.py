@@ -8,53 +8,21 @@
   only linked to the pattern whose name appears in the file name.
 """
 
-import hashlib
 import re
 import unicodedata
 import zipfile
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import IO
 
-from django.core.files import File
-from django.core.files.storage import default_storage
-
-from apps.catalog.models import Pattern, PatternFile, blob_name
+from apps.catalog.files import Entry, file_kind, is_junk, nfc, sha256, store_blob
+from apps.catalog.models import Pattern, PatternFile
 from apps.catalog.text import normalize
 
 PATRONS_PREFIX = "Documents/Patrons/"
-SKIPPED_NAMES = {".ds_store", "thumbs.db", "desktop.ini", "__macosx"}
-IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".tif", ".tiff"}
-_BOOKLET = (
-    r"livret|notice|instruction|explication|guide|tuto|gamme|\bgdm\b|booklet|manual"
-    r"|mode d.?emploi|step by step"
-)
-_PIECES = (
-    r"planche|\ba[0-4]\b|letter|copy ?shop|projecteur|projector|pattern ?pieces|pieces"
-    r"|calque|layers?|tiled|\bprint"
-)
 _STOPWORDS = {"and", "the", "et", "les", "des", "pour", "with"}
-CHUNK = 1024 * 1024
-
-
-def file_kind(name: str) -> PatternFile.Kind:
-    suffix = PurePosixPath(name).suffix.lower()
-    if suffix == ".zip":
-        return PatternFile.Kind.ARCHIVE
-    if suffix in IMAGE_SUFFIXES:
-        return PatternFile.Kind.IMAGE
-    if suffix == ".pdf":
-        # Split CamelCase ("SewingInstructions") and separators before matching words.
-        words = normalize(re.sub(r"(?<=[a-z])(?=[A-Z])", " ", PurePosixPath(name).stem))
-        words = re.sub(r"[_\-.&]+", " ", words)
-        if re.search(_BOOKLET, words):
-            return PatternFile.Kind.BOOKLET
-        if re.search(_PIECES, words):
-            return PatternFile.Kind.PIECES
-    return PatternFile.Kind.OTHER
 
 
 def _words(text: str) -> list[str]:
@@ -98,17 +66,6 @@ def resolve(source: Path, location: str) -> Path | None:
     return found[0] if len(found) == 1 else None
 
 
-@dataclass
-class Entry:
-    name: str  # path inside the location, NFC, "/" separated
-    size: int
-    open: Callable[[], IO[bytes]]
-
-
-def _skipped(parts: tuple[str, ...]) -> bool:
-    return any(p.startswith((".", "~$")) or p.lower() in SKIPPED_NAMES for p in parts)
-
-
 @contextmanager
 def entries(path: Path) -> Iterator[list[Entry]]:
     if path.is_dir():
@@ -117,32 +74,18 @@ def entries(path: Path) -> Iterator[list[Entry]]:
             rel = f.relative_to(path)
             # "X.zip" next to its extracted "X/" folder: the folder already has the files.
             unpacked = f.suffix.lower() == ".zip" and f.with_suffix("").is_dir()
-            if f.is_file() and not _skipped(rel.parts) and not unpacked:
-                found.append(
-                    Entry(_nz_keep_case(rel.as_posix()), f.stat().st_size, lambda f=f: f.open("rb"))
-                )
+            if f.is_file() and not is_junk(rel.parts) and not unpacked:
+                found.append(Entry(nfc(rel.as_posix()), f.stat().st_size, lambda f=f: f.open("rb")))
         yield found
     elif path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as zf:
             yield [
-                Entry(_nz_keep_case(i.filename), i.file_size, lambda i=i: zf.open(i))
+                Entry(nfc(i.filename), i.file_size, lambda i=i: zf.open(i))
                 for i in zf.infolist()
-                if not i.is_dir() and not _skipped(PurePosixPath(i.filename).parts)
+                if not i.is_dir() and not is_junk(PurePosixPath(i.filename).parts)
             ]
     else:
-        yield [Entry(_nz_keep_case(path.name), path.stat().st_size, lambda: path.open("rb"))]
-
-
-def _nz_keep_case(name: str) -> str:
-    return unicodedata.normalize("NFC", name)
-
-
-def _sha256(entry: Entry) -> str:
-    digest = hashlib.sha256()
-    with entry.open() as fh:
-        while chunk := fh.read(CHUNK):
-            digest.update(chunk)
-    return digest.hexdigest()
+        yield [Entry(nfc(path.name), path.stat().st_size, lambda: path.open("rb"))]
 
 
 @dataclass
@@ -215,21 +158,15 @@ class _FilesImporter:
             self.report.files_linked += existing is None
             self.report.files_unchanged += existing is not None
             return
-        sha = _sha256(entry)
-        if existing and existing.sha256 == sha:
+        digest = sha256(entry)
+        if existing and existing.sha256 == digest:
             if existing.kind != (kind := file_kind(entry.name)):  # classification rules changed
                 existing.kind = kind
                 existing.save(update_fields=["kind"])
             self.report.files_unchanged += 1
             return
-        name = blob_name(self.owner.pk, sha, entry.name)
-        if not default_storage.exists(name):
-            with entry.open() as fh:
-                content = File(fh, name=PurePosixPath(entry.name).name)
-                content.size = entry.size
-                saved = default_storage.save(name, content)
-            if saved != name:  # another process stored the same blob meanwhile
-                default_storage.delete(saved)
+        name, digest, uploaded = store_blob(self.owner.pk, entry, digest)
+        if uploaded:
             self.report.blobs_uploaded += 1
             self.report.bytes_uploaded += entry.size
         PatternFile.objects.update_or_create(
@@ -237,7 +174,7 @@ class _FilesImporter:
             original_name=entry.name,
             defaults={
                 "file": name,
-                "sha256": sha,
+                "sha256": digest,
                 "size": entry.size,
                 "kind": file_kind(entry.name),
             },

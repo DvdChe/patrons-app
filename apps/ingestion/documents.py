@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import pypdfium2 as pdfium
 
-from apps.catalog.legacy.files import file_kind
+from apps.catalog.files import file_kind
 from apps.catalog.models import PatternFile
 
 log = logging.getLogger(__name__)

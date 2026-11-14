@@ -1,0 +1,47 @@
+{% comment %}Pattern fields shared by the edit page and the add (review) page. `sources` maps a
+field name to where its pre-filled value comes from (review page only).{% endcomment %}
+  <h3>Identité</h3>
+  <div class="grid2">
+    {% include "catalog/_field.html" with field=form.name source=sources.name %}
+    <div>
+      {% include "catalog/_field.html" with field=form.brand source=sources.brand %}
+      {% if form.new_brand %}{% include "catalog/_field.html" with field=form.new_brand %}{% endif %}
+    </div>
+    {% include "catalog/_field.html" with field=form.brand_confidence source=sources.brand_confidence %}
+    {% include "catalog/_field.html" with field=form.audience source=sources.audience %}
+    {% include "catalog/_field.html" with field=form.garment_type source=sources.garment_type hint="Texte libre, ex. « Robe / blouse »." %}
+    {% include "catalog/_field.html" with field=form.family source=sources.family %}
+  </div>
+
+  <h3>Couture</h3>
+  <div class="grid2">
+    {% include "catalog/_field.html" with field=form.difficulty_raw source=sources.difficulty_raw hint="Tel qu’écrit dans le livret." %}
+    {% include "catalog/_field.html" with field=form.difficulty source=sources.difficulty %}
+    {% include "catalog/_field.html" with field=form.fabrics_raw source=sources.fabrics_raw hint="Préciser « (chaîne et trame) » ou « (maille) »." %}
+    {% include "catalog/_field.html" with field=form.fabric_kind source=sources.fabric_kind %}
+    {% include "catalog/_field.html" with field=form.yardage_raw source=sources.yardage_raw hint=yardage_hint|default:"Ex. « 1,90 – 2,70 m »." %}
+    {% include "catalog/_field.html" with field=form.yardage_max_m source=sources.yardage_max_m %}
+    {% include "catalog/_field.html" with field=form.size_range source=sources.size_range %}
+    <div class="field">
+      <label>Saison</label>
+      <div class="row">{% for cb in form.seasons %}<label>{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}</div>
+      <label>{{ form.seasons_inferred }} {{ form.seasons_inferred.label|capfirst }}</label>
+    </div>
+    {% include "catalog/_field.html" with field=form.seam_allowance source=sources.seam_allowance %}
+    {% include "catalog/_field.html" with field=form.seam_allowance_detail source=sources.seam_allowance_detail hint="Ex. « 1 cm ; 2 cm aux ourlets »." %}
+    {% include "catalog/_field.html" with field=form.seam_allowance_source source=sources.seam_allowance_source %}
+  </div>
+
+  <h3>Détails</h3>
+  {% for group, boxes in form.tag_groups %}
+    <details open><summary>{{ group }}</summary>
+      {% for cb in boxes %}<label class="tg">{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}
+    </details>
+  {% endfor %}
+  {% include "catalog/_field.html" with field=form.tags_source source=sources.tags_source %}
+
+  <h3>Suivi</h3>
+  <label>{{ form.sewn }} Cousu</label>
+  {% include "catalog/_field.html" with field=form.notes source=sources.notes %}
+  {% include "catalog/_field.html" with field=form.remarks source=sources.remarks %}
+

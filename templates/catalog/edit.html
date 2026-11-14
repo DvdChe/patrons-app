@@ -8,51 +8,11 @@
   {% if form.non_field_errors %}<p class="warn">{{ form.non_field_errors|join:" " }}</p>{% endif %}
   <p class="disc">Quand vous modifiez un texte (type, niveau, tissus, métrage), la valeur utilisée par les filtres est recalculée, sauf si vous la changez vous-même.</p>
 
-  <h3>Identité</h3>
-  <div class="grid2">
-    {% include "catalog/_field.html" with field=form.name %}
-    {% include "catalog/_field.html" with field=form.brand %}
-    {% include "catalog/_field.html" with field=form.brand_confidence %}
-    {% include "catalog/_field.html" with field=form.audience %}
-    {% include "catalog/_field.html" with field=form.garment_type hint="Texte libre, ex. « Robe / blouse »." %}
-    {% include "catalog/_field.html" with field=form.family %}
-  </div>
-
-  <h3>Couture</h3>
-  <div class="grid2">
-    {% include "catalog/_field.html" with field=form.difficulty_raw hint="Tel qu’écrit dans le livret." %}
-    {% include "catalog/_field.html" with field=form.difficulty %}
-    {% include "catalog/_field.html" with field=form.fabrics_raw hint="Préciser « (chaîne et trame) » ou « (maille) »." %}
-    {% include "catalog/_field.html" with field=form.fabric_kind %}
-    {% include "catalog/_field.html" with field=form.yardage_raw hint="Ex. « 1,90 – 2,70 m »." %}
-    {% include "catalog/_field.html" with field=form.yardage_max_m %}
-    {% include "catalog/_field.html" with field=form.size_range %}
-    <div class="field">
-      <label>Saison</label>
-      <div class="row">{% for cb in form.seasons %}<label>{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}</div>
-      <label>{{ form.seasons_inferred }} {{ form.seasons_inferred.label|capfirst }}</label>
-    </div>
-    {% include "catalog/_field.html" with field=form.seam_allowance %}
-    {% include "catalog/_field.html" with field=form.seam_allowance_detail hint="Ex. « 1 cm ; 2 cm aux ourlets »." %}
-    {% include "catalog/_field.html" with field=form.seam_allowance_source %}
-  </div>
-
-  <h3>Détails</h3>
-  {% for group, boxes in form.tag_groups %}
-    <details open><summary>{{ group }}</summary>
-      {% for cb in boxes %}<label class="tg">{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}
-    </details>
-  {% endfor %}
-  {% include "catalog/_field.html" with field=form.tags_source %}
+  {% include "catalog/_pattern_fields.html" %}
 
   <h3>Vignette</h3>
   {% if pattern.thumbnail %}<img src="{{ pattern.thumbnail.url }}" alt="" style="max-height:200px;border-radius:6px">{% endif %}
   {% include "catalog/_field.html" with field=form.thumbnail hint="Dessin technique de préférence. Redimensionnée en JPEG 800 px." %}
-
-  <h3>Suivi</h3>
-  <label>{{ form.sewn }} Cousu</label>
-  {% include "catalog/_field.html" with field=form.notes %}
-  {% include "catalog/_field.html" with field=form.remarks %}
 
   <div class="actions">
     <button type="submit" class="primary">Enregistrer</button>

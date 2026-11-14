@@ -7,7 +7,8 @@ import zipfile
 import pytest
 from django.core.files.storage import Storage
 
-from apps.catalog.legacy.files import file_kind, import_files, matches_pattern
+from apps.catalog.files import file_kind
+from apps.catalog.legacy.files import import_files, matches_pattern
 from apps.catalog.models import Pattern, PatternFile
 
 
