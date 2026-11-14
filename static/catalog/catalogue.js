@@ -51,6 +51,7 @@ const FIELD = {
   fabric: (x) => x.fabric,
   difficulty: (x) => x.difficulty,
   seam: (x) => x.seam,
+  sewn: (x) => (x.sewn ? "yes" : "no"),
 };
 
 document.addEventListener("alpine:init", () => {
@@ -72,6 +73,7 @@ document.addEventListener("alpine:init", () => {
       { key: "fabric", label: "Tissu", all: "Tous" },
       { key: "seam", label: "Marges de couture", all: "Toutes" },
       { key: "difficulty", label: "Niveau", all: "Tous" },
+      { key: "sewn", label: "Cousu", all: "Tous" },
     ],
     SEASONS: [
       { value: "summer", label: "Été" },
@@ -83,7 +85,7 @@ document.addEventListener("alpine:init", () => {
     q: "",
     sort: "name",
     brand: "",
-    filters: { family: "", audience: "", fabric: "", seam: "", difficulty: "" },
+    filters: { family: "", audience: "", fabric: "", seam: "", difficulty: "", sewn: "" },
     seasons: [],
     maxYardage: MMAX,
     withThumb: false,
@@ -110,6 +112,7 @@ document.addEventListener("alpine:init", () => {
     // sheet
     sheetOpen: false,
     sheetHtml: "",
+    quickMessage: "",
 
     async init() {
       const [catalogue] = await Promise.all([api("/api/catalogue"), this.loadProfiles()]);
@@ -120,6 +123,9 @@ document.addEventListener("alpine:init", () => {
       await this.loadRecommendations();
       this.loading = false;
       this.render();
+      // Back from the edit page: reopen the pattern sheet.
+      const m = location.hash.match(/^#pattern-(\d+)$/);
+      if (m) this.openSheet(Number(m[1]));
     },
 
     // ---- profiles
@@ -265,7 +271,7 @@ document.addEventListener("alpine:init", () => {
 
     reset() {
       Object.assign(this, { q: "", brand: "", seasons: [], maxYardage: MMAX, withThumb: false, fitOnly: false, chartOnly: false, tags: [] });
-      this.filters = { family: "", audience: "", fabric: "", seam: "", difficulty: "" };
+      this.filters = { family: "", audience: "", fabric: "", seam: "", difficulty: "", sewn: "" };
       this.refresh();
     },
 
@@ -347,6 +353,7 @@ document.addEventListener("alpine:init", () => {
     // ---- pattern sheet
 
     async openSheet(id) {
+      this.quickMessage = "";
       const res = await fetch(`/patterns/${id}/sheet?profile=${this.profileId}`);
       this.sheetHtml = res.ok ? await res.text() : "<p>Impossible de charger la fiche.</p>";
       this.sheetOpen = true;
@@ -354,6 +361,21 @@ document.addEventListener("alpine:init", () => {
 
     closeSheet() {
       this.sheetOpen = false;
+      if (location.hash) history.replaceState(null, "", location.pathname);
+    },
+
+    async saveQuick(id, data) {
+      try {
+        const saved = await api(`/api/patterns/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+        // Replace the row instead of mutating it: ROWS is not reactive, a new object makes
+        // Alpine refresh the card.
+        const i = ROWS.findIndex((x) => x.id === id);
+        if (i >= 0) ROWS[i] = { ...ROWS[i], sewn: saved.sewn };
+        this.quickMessage = "Enregistré";
+        this.render(false);
+      } catch (e) {
+        this.quickMessage = e.message;
+      }
     },
 
     fmt,

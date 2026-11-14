@@ -13,6 +13,7 @@ from pathlib import Path
 from django.core.files import File
 from django.db import transaction
 
+from apps.catalog import normalize as n
 from apps.catalog.models import (
     Brand,
     Difficulty,
@@ -25,8 +26,6 @@ from apps.catalog.models import (
     SizeChartRow,
     Tag,
 )
-
-from . import normalize as n
 
 INVENTORY_FILE = "inventaire-patrons-complet.csv"
 SIZES_FILE = "tableaux-tailles.csv"

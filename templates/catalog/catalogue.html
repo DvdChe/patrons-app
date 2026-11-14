@@ -105,6 +105,7 @@
               <span class="mut met" x-text="x.yardage_text || 'métrage non précisé'"></span>
               <div class="mg" x-show="x.seam === 'included'">marges comprises</div>
               <div class="mg no" x-show="x.seam === 'not_included'">marges non comprises</div>
+              <div class="sewn-badge" x-show="x.sewn">✓ cousu</div>
               <div class="rec" :class="{na: rec(x).muted}" x-show="rec(x).text" x-text="rec(x).text"></div>
             </div>
           </div>

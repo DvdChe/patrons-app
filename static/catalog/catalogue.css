@@ -42,3 +42,19 @@ header .user form{margin:0}
 .errorlist{color:var(--warn);padding-left:18px}
 .loading{color:var(--mut);padding:30px;text-align:center}
 #modal{display:flex}
+/* ---- edit pages */
+form.page{max-width:900px;margin:20px auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 22px}
+form.page h2{margin-top:0}form.page h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:22px 0 8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}
+.field{display:flex;flex-direction:column;gap:3px}.field label{font-weight:600;font-size:13px}
+.field input[type=text],.field input[type=number],.field select,.field textarea{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:5px;font:inherit}
+.field.err input,.field.err select,.field.err textarea{border-color:var(--warn)}
+.field ul{list-style:none;padding:0;margin:0}
+label.tg input{margin:0 3px 0 0;vertical-align:middle}
+.actions{display:flex;gap:14px;align-items:center;margin-top:22px}
+button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+a.danger{margin-left:auto;color:var(--warn)}button.danger{background:var(--warn);color:#fff;border-color:var(--warn)}
+.sheet-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+textarea.notes{width:100%;min-height:60px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;font:inherit}
+.sewn-badge{display:inline-block;margin-top:3px;font-size:11px;color:var(--ok);font-weight:600}
+@media(max-width:800px){.grid2{grid-template-columns:1fr}}

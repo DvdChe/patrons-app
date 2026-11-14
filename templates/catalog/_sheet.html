@@ -2,6 +2,13 @@
 <h2 style="margin-top:0">{{ pattern.name }} <span class="mut" style="font-weight:400">— {{ pattern.brand.name }}</span></h2>
 {% if pattern.thumbnail %}<img src="{{ pattern.thumbnail.url }}" alt="" style="max-height:260px;float:right;margin:0 0 10px 14px;border-radius:6px">{% endif %}
 
+<div class="sheet-actions">
+  <a class="open" href="{% url 'catalog:edit' pattern.pk %}">Modifier la fiche</a>
+  <label><input type="checkbox"{% if pattern.sewn %} checked{% endif %} @change="saveQuick({{ pattern.pk }}, {sewn: $event.target.checked})"> Cousu</label>
+  <span class="disc" x-text="quickMessage"></span>
+</div>
+<textarea class="notes" placeholder="Mes notes…" @input.debounce.600ms="saveQuick({{ pattern.pk }}, {notes: $event.target.value})">{{ pattern.notes }}</textarea>
+
 <div class="files">
   {% for f in files %}<a class="open" href="{{ f.file.url }}" target="_blank" rel="noopener">{{ f.original_name }}</a>{% empty %}
   <span class="disc">Fichiers pas encore importés{% if pattern.legacy_location %} — emplacement d’origine : {{ pattern.legacy_location }}{% endif %}</span>
@@ -55,8 +62,6 @@
   <div>Tissus conseillés</div><div>{{ pattern.fabrics_raw|default:"—" }}</div>
   <div>Tailles</div><div>{{ pattern.size_range|default:"—" }}</div>
   <div>Niveau</div><div>{{ pattern.difficulty_raw|default:"—" }}</div>
-  <div>Cousu</div><div>{{ pattern.sewn|yesno:"Oui,Non" }}</div>
-  <div>Mes notes</div><div>{{ pattern.notes|default:"—"|linebreaksbr }}</div>
   <div>Remarques inventaire</div><div>{{ pattern.remarks|default:"—" }}</div>
   <div class="disc">Détails : source</div><div class="disc">{{ pattern.tags_source|default:"—" }}</div>
 </div>

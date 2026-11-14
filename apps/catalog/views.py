@@ -9,10 +9,11 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
 from . import presenters
+from .forms import PatternForm
 from .models import (
     MEASURES,
     Audience,
@@ -84,6 +85,7 @@ def api_catalogue(request):
                 "tags": [f"{t.group}|{t.value}" for t in p.tags.all()],
                 "search": p.search_text,
                 "has_body_chart": any(c.measure_type == "body" for c in charts),
+                "sewn": p.sewn,
             }
         )
     taxonomy: dict[str, list[str]] = {}
@@ -103,6 +105,7 @@ def api_catalogue(request):
                 "fabric": choices(FabricKind, exclude={FabricKind.UNSPECIFIED}),
                 "difficulty": choices(Difficulty),
                 "seam": choices(SeamAllowance),
+                "sewn": [["yes", "Cousus"], ["no", "Pas encore cousus"]],
             },
         }
     )
@@ -139,6 +142,52 @@ def pattern_sheet(request, pk: int):
         ],
     }
     return render(request, "catalog/_sheet.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def pattern_edit(request, pk: int):
+    pattern = get_object_or_404(_patterns(request.user), pk=pk)
+    form = PatternForm(request.POST or None, request.FILES or None, instance=pattern)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            pattern = form.save()
+            pattern.save(update_fields=["search_text"])  # index the saved tags
+        return redirect(f"/#pattern-{pattern.pk}")
+    return render(request, "catalog/edit.html", {"form": form, "pattern": pattern})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def pattern_delete(request, pk: int):
+    pattern = get_object_or_404(_patterns(request.user), pk=pk)
+    if request.method == "POST":
+        pattern.delete()
+        return redirect("catalog:catalogue")
+    return render(request, "catalog/delete.html", {"pattern": pattern})
+
+
+QUICK_EDIT_FIELDS = {"sewn": bool, "notes": str}
+
+
+@login_required
+@require_http_methods(["PATCH"])
+def api_pattern(request, pk: int):
+    """Edit the personal tracking fields from the pattern sheet."""
+    pattern = get_object_or_404(_patterns(request.user), pk=pk)
+    try:
+        data = _body(request)
+    except ValueError as e:
+        return _error(str(e))
+    if not data or set(data) - set(QUICK_EDIT_FIELDS):
+        return _error("Champs modifiables : cousu, notes.")
+    for field, kind in QUICK_EDIT_FIELDS.items():
+        if field in data:
+            if not isinstance(data[field], kind):
+                return _error(f"Valeur invalide pour {field}.")
+            setattr(pattern, field, data[field])
+    pattern.save(update_fields=[*data, "updated_at"])
+    return JsonResponse({"sewn": pattern.sewn, "notes": pattern.notes})
 
 
 # ---- measurement profiles

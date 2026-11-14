@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Supprimer {{ pattern.name }} — Moteur de patrons{% endblock %}
+{% block body %}
+{% include "catalog/_page_header.html" %}
+<form class="page" method="post">
+  {% csrf_token %}
+  <h2>Supprimer « {{ pattern.name }} » ({{ pattern.brand.name }}) ?</h2>
+  <p>La fiche, ses tableaux de tailles propres et ses notes seront supprimés. Cette action est définitive.</p>
+  <div class="actions">
+    <button type="submit" class="danger">Supprimer définitivement</button>
+    <a href="/#pattern-{{ pattern.pk }}">Annuler</a>
+  </div>
+</form>
+{% endblock %}

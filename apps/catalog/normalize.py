@@ -1,4 +1,4 @@
-"""Turn the free-text values of the legacy CSV inventory into normalized model values.
+"""Turn free-text pattern values (booklet wording) into normalized model values.
 
 Ported from the MVP generator (`_moteur/regenerer_moteur.py`), where the same rules ran at
 every page generation. Each function is pure and takes the raw CSV cell.

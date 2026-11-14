@@ -1,0 +1,7 @@
+<header>
+  <h1><a href="{% url 'catalog:catalogue' %}" style="color:inherit;text-decoration:none">Moteur de patrons</a></h1>
+  <div class="user">
+    {{ user.get_username }}
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Se déconnecter</button></form>
+  </div>
+</header>

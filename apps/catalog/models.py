@@ -123,7 +123,7 @@ class Tag(models.Model):
     position = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ["group", "position"]
+        ordering = ["pk"]  # creation order = order of the taxonomy file (groups stay together)
         constraints = [
             models.UniqueConstraint(fields=["group", "value"], name="tag_unique_group_value"),
         ]
@@ -134,7 +134,9 @@ class Tag(models.Model):
 
 class Pattern(OwnedModel):
     name = models.CharField(_("modèle"), max_length=200, db_collation=FR_COLLATION)
-    brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name="patterns")
+    brand = models.ForeignKey(
+        Brand, on_delete=models.PROTECT, related_name="patterns", verbose_name=_("marque")
+    )
     brand_confidence = models.CharField(
         _("marque : fiabilité"),
         max_length=20,
@@ -181,7 +183,9 @@ class Pattern(OwnedModel):
         _("marges : source"), max_length=20, choices=InfoSource, default=InfoSource.UNKNOWN
     )
 
-    tags = models.ManyToManyField(Tag, blank=True, related_name="patterns")
+    tags = models.ManyToManyField(
+        Tag, blank=True, related_name="patterns", verbose_name=_("détails")
+    )
     tags_source = models.CharField(_("détails : source"), max_length=100, blank=True)
 
     # Brand size charts that apply to this pattern (a brand may have several, e.g. 30-48 and

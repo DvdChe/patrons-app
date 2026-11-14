@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from apps.catalog.legacy import normalize as n
+from apps.catalog import normalize as n
 from apps.catalog.models import (
     Audience,
     BrandConfidence,
