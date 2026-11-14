@@ -113,6 +113,10 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Optional LLM for pattern ingestion (Ollama API). Empty: rules only.
+LLM_URL = env("LLM_URL", default="")
+LLM_MODEL = env("LLM_MODEL", default="")
+
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True

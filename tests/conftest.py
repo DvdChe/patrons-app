@@ -21,3 +21,9 @@ def plain_static_storage(settings):
         **settings.STORAGES,
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
+
+
+@pytest.fixture(autouse=True)
+def no_llm(settings):
+    """Tests never call the real LLM (compose sets LLM_URL for development)."""
+    settings.LLM_URL = ""

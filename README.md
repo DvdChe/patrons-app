@@ -51,6 +51,15 @@ the MVP inventory with:
 docker compose exec web python manage.py evaluate_extraction /patrons --owner <username> --sample 100
 ```
 
+### Optional LLM
+
+With `LLM_URL` (Ollama API) and `LLM_MODEL` set, the analysis also asks a local model about the
+recommended fabrics, using only the passages the rules located. In development, compose points
+to Ollama running natively on the host (`ollama serve`; Docker on macOS has no GPU access).
+Empty `LLM_URL` (production default): rules only. Measure with
+`evaluate_extraction --llm [--model …]`: only the fabrics are taken from the LLM, other fields
+were not better than the rules.
+
 ## Importing the MVP inventory
 
 ```bash

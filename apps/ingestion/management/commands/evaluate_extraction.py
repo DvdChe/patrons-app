@@ -23,6 +23,7 @@ from apps.catalog.models import (
     Pattern,
     SeamAllowance,
 )
+from apps.catalog.normalize import family as normalize_family
 from apps.catalog.text import normalize
 from apps.ingestion.documents import SourceFile
 from apps.ingestion.pipeline import brand_table, propose
@@ -96,6 +97,27 @@ CHECKS = {
         lambda t, p: bool(p.seasons),
         lambda t, p: set(p.seasons) == set(t.seasons),
     ),
+    # LLM answers alone (only with --llm)
+    "LLM yardage max": (
+        lambda t, p: p.llm is not None and t.yardage_max_m is not None,
+        lambda t, p: p.llm.yardage_m is not None,
+        lambda t, p: abs(p.llm.yardage_m - t.yardage_max_m) <= Decimal("0.1"),
+    ),
+    "LLM seasons": (
+        lambda t, p: p.llm is not None and bool(t.seasons),
+        lambda t, p: bool(p.llm.seasons),
+        lambda t, p: set(p.llm.seasons) == set(t.seasons),
+    ),
+    "LLM fabric kind": (
+        lambda t, p: p.llm is not None and t.fabric_kind != FabricKind.UNSPECIFIED,
+        lambda t, p: p.llm.fabric_kind != FabricKind.UNSPECIFIED,
+        lambda t, p: p.llm.fabric_kind == t.fabric_kind,
+    ),
+    "LLM family": (
+        lambda t, p: p.llm is not None and t.family != Family.UNCLASSIFIED,
+        lambda t, p: bool(p.llm.garment_type),
+        lambda t, p: normalize_family(p.llm.garment_type) == t.family,
+    ),
 }
 
 
@@ -108,11 +130,13 @@ class Command(BaseCommand):
         parser.add_argument("--sample", type=int, default=60)
         parser.add_argument("--seed", type=int, default=1)
         parser.add_argument("--errors", help="Print the mismatches of this field")
+        parser.add_argument("--llm", action="store_true", help="Also ask the LLM (LLM_URL)")
+        parser.add_argument("--model", help="LLM model (default: LLM_MODEL)")
         parser.add_argument(
             "--missed", action="store_true", help="With --errors: also print values not proposed"
         )
 
-    def handle(self, source, owner, sample, seed, errors, missed, **options):
+    def handle(self, source, owner, sample, seed, errors, missed, llm, model, **options):
         try:
             user = get_user_model().objects.get(username=owner)
         except get_user_model().DoesNotExist:
@@ -137,6 +161,8 @@ class Command(BaseCommand):
         tag_truth = 0
         mismatches = []
         done = ocr_pages = 0
+        llm_seconds = 0.0
+        llm_tags = defaultdict(lambda: [0, 0])
         started = time.monotonic()
         for pattern in patterns:
             if done >= sample:
@@ -144,7 +170,8 @@ class Command(BaseCommand):
             files = self._files(source, pattern, shared[pattern.legacy_location] > 1)
             if not files:
                 continue
-            proposal = propose(files, brands, rules)
+            proposal = propose(files, brands, rules, use_llm=llm, llm_model=model)
+            llm_seconds += proposal.llm.seconds if proposal.llm else 0
             done += 1
             ocr_pages += proposal.document.ocr_pages
             if pattern.tags_source:  # tags were filled for this pattern
@@ -153,6 +180,9 @@ class Command(BaseCommand):
                 for tag in proposal.tags:
                     tag_stats[tag][0] += 1
                     tag_stats[tag][1] += tag in truth
+                for tag in proposal.llm.tags if proposal.llm else []:
+                    llm_tags[tag][0] += 1
+                    llm_tags[tag][1] += tag in truth
             for field, (known, proposed, correct) in CHECKS.items():
                 if not known(pattern, proposal):
                     continue
@@ -188,6 +218,17 @@ class Command(BaseCommand):
             f"{'tags (each)':22} {tag_truth:6} {proposed:9} {correct:8} "
             f"{precision:>10.0%} {recall:>7.0%}"
         )
+        if llm:
+            n_prop = sum(v[0] for v in llm_tags.values())
+            n_ok = sum(v[1] for v in llm_tags.values())
+            precision = n_ok / n_prop if n_prop else 0
+            recall = n_ok / tag_truth if tag_truth else 0
+            self.stdout.write(
+                f"{'LLM tags (each)':22} {tag_truth:6} {n_prop:9} {n_ok:8} "
+                f"{precision:>10.0%} {recall:>7.0%}"
+            )
+            per_pattern = llm_seconds / max(done, 1)
+            self.stdout.write(f"\nLLM: {llm_seconds:.0f} s, {per_pattern:.1f} s per pattern")
         if errors == "tags":
             for (group, value), (n_prop, n_ok) in sorted(
                 tag_stats.items(), key=lambda kv: kv[1][1] / kv[1][0]

@@ -14,6 +14,7 @@ from django.db import transaction
 from apps.catalog.files import IMAGE_SUFFIXES, Entry, file_kind, is_junk, nfc, store_blob
 from apps.catalog.models import Brand, InfoSource, PatternFile, SeamAllowance
 
+from . import llm
 from .documents import SourceFile
 from .models import IngestionFile, IngestionJob
 from .pipeline import brand_table, propose
@@ -119,7 +120,7 @@ def analyse(job: IngestionJob) -> None:
     # The names users give their uploads carry the pattern name: zips first, then booklets.
     sources.sort(key=lambda s: (not s.name.endswith(".zip"), file_kind(s.name) != "booklet"))
 
-    p = propose(sources, brand_table(), _brand_rules())
+    p = propose(sources, brand_table(), _brand_rules(), use_llm=llm.enabled())
     job.proposal = {
         "name": p.name,
         "brand": p.brand_id,

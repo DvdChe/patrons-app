@@ -15,7 +15,9 @@ from apps.catalog.models import (
 )
 
 from . import extractors as x
+from . import llm
 from .documents import DocumentText, SourceFile, read_text
+from .llm import LlmAnswer
 
 
 @dataclass
@@ -38,6 +40,7 @@ class Proposal:
     fabric_kind: FabricKind = FabricKind.UNSPECIFIED
     seasons: list[str] = field(default_factory=list)  # always inferred from the wording
     tags: list[tuple[str, str]] = field(default_factory=list)
+    llm: LlmAnswer | None = None  # raw LLM answer, when the LLM was used
     document: DocumentText = field(default_factory=DocumentText)
 
 
@@ -49,6 +52,8 @@ def propose(
     files: list[SourceFile],
     brands: list[tuple[int, str, list[str]]],
     brand_rules: dict[int, tuple[str, str]] | None = None,
+    use_llm: bool = False,
+    llm_model: str | None = None,
 ) -> Proposal:
     """`brand_rules`: brand id -> (seam allowance, detail) used when the booklet is silent."""
     doc = read_text(files)
@@ -94,4 +99,22 @@ def propose(
     p.fabrics_raw = shown(fabrics_snippet)
     p.seasons = x.seasons(text)
     p.tags = x.tags(text)
+    if use_llm:
+        complete_with_llm(p, llm_model)
     return p
+
+
+def complete_with_llm(p: Proposal, model: str | None = None) -> None:
+    """Ask the LLM, then fill only what the rules left empty.
+
+    Measured with evaluate_extraction --llm (40 unseen patterns, qwen3.5 9B): only the
+    fabrics gain (recall of the fabric kind 19 % -> 52 %). Family, yardage, seasons and tags
+    are not taken from the LLM: no gain, or much worse than the rules (tags: 9 % precision).
+    """
+    p.llm = llm.ask(p.name, p.document.opening, p.document.text, model)
+    if p.llm is None:
+        return
+    if not p.fabrics_raw and p.llm.fabrics:
+        p.fabrics_raw = p.llm.fabrics
+    if p.fabric_kind == FabricKind.UNSPECIFIED:
+        p.fabric_kind = p.llm.fabric_kind

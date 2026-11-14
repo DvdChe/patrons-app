@@ -11,6 +11,9 @@ x-dev-env: &dev-env
   DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,web
   DATABASE_URL: postgres://patrons:patrons@db:5432/patrons
   MEDIA_ROOT: /app/media
+  # Ollama running natively on the host (GPU access); empty LLM_URL disables it.
+  LLM_URL: ${LLM_URL:-http://host.docker.internal:11434}
+  LLM_MODEL: ${LLM_MODEL:-qwen3.5:9b-q4_K_M}
 
 services:
   db:
