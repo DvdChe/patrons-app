@@ -259,6 +259,7 @@ class TestDownload:
         assert b"".join(response.streaming_content) == b"%PDF booklet"
         assert response["Content-Type"] == "application/pdf"
         assert response["Content-Disposition"].startswith("inline")
+        assert response["X-Frame-Options"] == "SAMEORIGIN"
 
     def test_other_user_gets_404(self, client, pattern_file, django_user_model):
         client.force_login(django_user_model.objects.create_user(username="bob", password="x"))

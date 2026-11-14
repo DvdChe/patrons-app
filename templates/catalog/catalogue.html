@@ -20,6 +20,7 @@
   <button type="button" @click="reset()">Réinitialiser les filtres</button>
   <a class="add" href="{% url 'ingestion:upload' %}">＋ Ajouter un patron</a>
   <div class="user">
+    <a href="{% url 'dataset:index' %}">Audit</a>
     {{ user.get_username }}
     <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Se déconnecter</button></form>
   </div>

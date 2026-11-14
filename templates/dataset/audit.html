@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Audit : {{ pattern.name }} — Moteur de patrons{% endblock %}
+{% block head %}<script defer src="{% static 'vendor/alpine.min.js' %}"></script>{% endblock %}
+{% block body %}
+{% include "catalog/_page_header.html" %}
+<div class="audit">
+  <section class="viewer" x-data="{src: '{% if files %}{% url 'catalog:file' files.0.pk %}{% endif %}'}">
+    {% if files %}
+      <div class="row">{% for f in files %}<button type="button" @click="src = '{% url 'catalog:file' f.pk %}'" :class="{on: src.endsWith('/{{ f.pk }}')}">{{ f.basename }}</button>{% endfor %}</div>
+      <iframe :src="src" title="Fichier du patron"></iframe>
+    {% else %}
+      <p class="warn">Les fichiers de ce patron ne sont pas importés : impossible de vérifier dans le livret.</p>
+      <p class="disc">Emplacement d’origine : {{ pattern.legacy_location }}</p>
+    {% endif %}
+    {% if pattern.thumbnail %}<img src="{{ pattern.thumbnail.url }}" alt="" class="audit-thumb">{% endif %}
+  </section>
+
+  <form method="post" class="page fields">
+    {% csrf_token %}
+    <h2>{{ pattern.name }} <span class="mut" style="font-weight:400">— fiche {{ sample.rank }} / {{ total }}</span></h2>
+    <p class="disc">Pour chaque valeur : ✓ si elle est juste d’après le livret, ✗ si elle est fausse (corrigez-la : la fiche sera mise à jour), ? si le livret ne permet pas de savoir.</p>
+    {% for row in rows %}{% with f=row.field %}
+    <div class="arow" x-data="{v: '{{ row.verdict }}'}">
+      <div class="alabel"><b>{{ f.label }}</b><br><span>{{ row.stored }}</span>{% if row.error %}<br><span class="warn">{{ row.error }}</span>{% endif %}</div>
+      <div class="averdict">
+        <label title="Correct"><input type="radio" name="verdict-{{ f.name }}" value="ok" x-model="v"> ✓</label>
+        <label title="Faux"><input type="radio" name="verdict-{{ f.name }}" value="wrong" x-model="v"> ✗</label>
+        <label title="Je ne sais pas"><input type="radio" name="verdict-{{ f.name }}" value="unknown" x-model="v"> ?</label>
+      </div>
+      {% if f.kind != "check" %}
+      <div class="afix" x-show="v === 'wrong'" x-cloak>
+        {% if f.kind == "text" %}<input type="text" name="value-{{ f.name }}" value="{{ row.current|default:'' }}">
+        {% elif f.kind == "choice" %}<select name="value-{{ f.name }}">{% for value, label in row.choices %}<option value="{{ value }}"{% if value == row.current %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        {% elif f.kind == "brand" %}<select name="value-{{ f.name }}">{% for b in brands %}<option value="{{ b.pk }}"{% if b.pk == row.current %} selected{% endif %}>{{ b.name }}</option>{% endfor %}</select>
+        {% elif f.kind == "seasons" %}{% for value, label in row.choices %}<label><input type="checkbox" name="value-{{ f.name }}" value="{{ value }}"{% if value in row.current %} checked{% endif %}> {{ label }}</label> {% endfor %}
+        {% elif f.kind == "tags" %}{% for group, tags in tag_groups %}<div><b class="disc">{{ group }}</b> {% for t, checked in tags %}<label class="tg"><input type="checkbox" name="value-{{ f.name }}" value="{{ t.pk }}"{% if checked %} checked{% endif %}> {{ t.value }}</label>{% endfor %}</div>{% endfor %}
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endwith %}{% endfor %}
+    <div class="actions">
+      <button type="submit" class="primary">Enregistrer et fiche suivante</button>
+      <a href="{% url 'dataset:index' %}">Retour</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

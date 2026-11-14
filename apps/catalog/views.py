@@ -13,6 +13,7 @@ from django.db import IntegrityError, transaction
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import content_disposition_header
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET, require_http_methods
 
 from . import presenters
@@ -156,6 +157,7 @@ DOWNLOAD_URL_TTL = 300  # seconds
 
 @login_required
 @require_GET
+@xframe_options_sameorigin  # the audit page shows booklets in a frame
 def file_download(request, pk: int):
     f = get_object_or_404(PatternFile, pk=pk, pattern__owner=request.user)
     content_type = mimetypes.guess_type(f.basename)[0] or "application/octet-stream"

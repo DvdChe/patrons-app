@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Bilan de l’audit — Moteur de patrons{% endblock %}
+{% block body %}
+{% include "catalog/_page_header.html" %}
+<div class="page">
+  <h2>Bilan de l’audit</h2>
+  <p>{{ audited }} fiche(s) vérifiée(s). Fiabilité = correctes / (correctes + fausses).</p>
+  <table>
+    <tr><th>Champ</th><th>✓ correct</th><th>✗ faux</th><th>? ne sait pas</th><th>Fiabilité</th></tr>
+    {% for r in rows %}<tr><td style="text-align:left">{{ r.label }}</td><td>{{ r.ok }}</td><td>{{ r.wrong }}</td><td>{{ r.unknown }}</td><td><b>{{ r.accuracy }}</b></td></tr>{% endfor %}
+  </table>
+  <p><a href="{% url 'dataset:index' %}">Retour à l’audit</a></p>
+</div>
+{% endblock %}

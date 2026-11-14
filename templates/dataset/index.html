@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Audit des fiches — Moteur de patrons{% endblock %}
+{% block body %}
+{% include "catalog/_page_header.html" %}
+<div class="page">
+  <h2>Audit des fiches</h2>
+  <p>Les fiches importées ont été remplies automatiquement par un agent. Vérifier un échantillon au hasard, champ par champ, dit à quel point elles sont fiables, et sert de référence pour mesurer l’extraction automatique.</p>
+  {% if samples %}
+    <p><b>{{ done }} / {{ samples|length }}</b> fiches vérifiées.
+      {% if next %}<a class="open" href="{% url 'dataset:audit' next.pk %}">Continuer</a>{% endif %}
+      <a href="{% url 'dataset:report' %}">Voir le bilan</a></p>
+    <ol class="audit-list">
+      {% for s in samples %}<li><a href="{% url 'dataset:audit' s.pk %}">{{ s.pattern.name }}</a> <span class="disc">{{ s.pattern.brand.name }}{% if s.done %} · vérifiée{% endif %}</span></li>{% endfor %}
+    </ol>
+  {% endif %}
+  <form method="post" action="{% url 'dataset:start' %}">
+    {% csrf_token %}
+    <label>{% if samples %}Ajouter{% else %}Tirer au hasard{% endif %} <input type="number" name="size" value="{{ size }}" min="1" max="200" style="width:70px"> fiches à vérifier</label>
+    <button type="submit">{% if samples %}Ajouter à l’échantillon{% else %}Commencer{% endif %}</button>
+  </form>
+</div>
+{% endblock %}
