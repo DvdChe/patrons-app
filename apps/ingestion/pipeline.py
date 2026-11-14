@@ -125,7 +125,11 @@ def complete_with_llm(
     - yardage (LLM 92/63 vs rules 71/53) and seam width (100/79 vs 94/52): the LLM wins;
     - family, size range, difficulty, seam allowance, fabrics: the rules win when they
       answer, the LLM fills what they left empty;
-    - brand: rules first (92 % precision), the LLM only suggests a known brand.
+    - brand: not taken from the LLM (seed 5: no recall gain, precision 96 -> 93 %).
+
+    Confirmed on another 40 patterns (seed 5, examples from the detected brand): seam
+    allowance recall 84 -> 97 %, seam width 68 -> 96 %, size range 54 -> 79 %, fabric kind
+    43 -> 78 %; yardage pre-filled at 75 % precision (92 % on seed 4), tagged "to check".
     """
     p.llm = llm.ask(p.document.opening, p.document.text, model, examples)
     a = p.llm
@@ -157,7 +161,3 @@ def complete_with_llm(
         p.llm_fields |= {"yardage_raw", "yardage_max_m"}
     fill("fabrics_raw", a.fabrics, "")
     fill("fabric_kind", a.fabric_kind, FabricKind.UNSPECIFIED)
-    if p.brand_id is None and brands and (pk := x.brand_from_name(a.brand, brands)):
-        p.brand_id = pk
-        p.new_brand = ""
-        p.llm_fields.add("brand")

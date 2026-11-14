@@ -110,12 +110,12 @@ def test_merge_policy(fake_ollama):
     # The LLM fills the gaps
     assert p.fabric_kind == FabricKind.WOVEN
     assert (p.difficulty, p.difficulty_raw) == ("beginner", "Facile")
-    assert p.brand_id == 7  # brand name read by the LLM, matched to a known brand
+    assert p.brand_id is None  # the brand is never taken from the LLM (no gain measured)
     # The LLM wins on yardage and seam width (measured better than the rules)
     assert (p.yardage_raw, p.yardage_max_m) == ("2,10 m", D("2.10"))
     assert p.seam_allowance_detail == "1 cm"
     assert p.llm_fields == {
-        "fabric_kind", "fabrics_raw", "difficulty", "difficulty_raw", "brand",
+        "fabric_kind", "fabrics_raw", "difficulty", "difficulty_raw",
         "yardage_raw", "yardage_max_m", "seam_allowance_detail",
     }  # fmt: skip
 
