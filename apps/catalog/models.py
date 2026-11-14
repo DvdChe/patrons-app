@@ -225,13 +225,15 @@ class Pattern(OwnedModel):
         return f"{self.name} ({self.brand})"
 
     def save(self, *args, **kwargs):
-        # Tags are M2M and only exist once saved: they are indexed by the import/edit services.
-        self.search_text = normalize(
-            " ".join(
-                [self.name, self.brand.name, self.garment_type, self.fabrics_raw, self.remarks]
-            )
-        )
+        self.search_text = self.build_search_text()
         super().save(*args, **kwargs)
+
+    def build_search_text(self) -> str:
+        parts = [self.name, self.brand.name, self.garment_type, self.fabrics_raw, self.remarks]
+        # Tags are M2M: they only exist once saved. Save again after changing tags to index them.
+        if self.pk:
+            parts += [f"{t.group} {t.value}" for t in self.tags.all()]
+        return normalize(" ".join(parts))
 
 
 def pattern_file_path(instance, filename):

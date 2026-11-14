@@ -31,7 +31,10 @@ extend-exclude = ["apps/*/migrations"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "DJ", "SIM", "RUF"]
-ignore = ["RUF012"]  # Django declares Meta/admin options as mutable class attributes
+ignore = [
+    "RUF012",  # Django declares Meta/admin options as mutable class attributes
+    "RUF001", "RUF002", "RUF003",  # French typography (en dash, apostrophe) is real data here
+]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
