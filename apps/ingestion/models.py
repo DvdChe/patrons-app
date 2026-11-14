@@ -70,3 +70,16 @@ class IngestionFile(models.Model):
 
     def __str__(self):
         return self.original_name
+
+
+class BookletText(models.Model):
+    """Text extracted from a set of PDFs, keyed by their content: booklets of known patterns
+    are read once to serve as LLM examples."""
+
+    key = models.CharField(max_length=64, unique=True)  # sha256 of the sorted PDF hashes
+    text = models.TextField()
+    opening = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.key

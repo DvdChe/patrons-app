@@ -83,6 +83,8 @@ def review(request, pk: int):
             proposal["seam_allowance_source"], "lu dans le livret"
         )
         sources |= {"seam_allowance": seam, "seam_allowance_detail": seam}
+    for name in proposal.get("llm_fields", []):
+        sources[name] = "lu par l’IA, à vérifier"
     if proposal.get("tags"):
         sources["tags"] = "suggestions du livret en couleur : cliquez pour les retenir"
     yardage = proposal.get("yardage_hint")

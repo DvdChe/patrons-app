@@ -17,6 +17,7 @@ from apps.catalog.models import Brand, InfoSource, PatternFile, SeamAllowance
 
 from . import llm
 from .documents import SourceFile
+from .examples import brand_examples
 from .models import IngestionFile, IngestionJob
 from .pipeline import brand_table, propose
 
@@ -121,7 +122,13 @@ def analyse(job: IngestionJob) -> None:
     # The names users give their uploads carry the pattern name: zips first, then booklets.
     sources.sort(key=lambda s: (not s.name.endswith(".zip"), file_kind(s.name) != "booklet"))
 
-    p = propose(sources, brand_table(), _brand_rules(), use_llm=llm.enabled())
+    p = propose(
+        sources,
+        brand_table(),
+        _brand_rules(),
+        use_llm=llm.enabled(),
+        examples_for=lambda brand_id: brand_examples(job.owner, brand_id),
+    )
     job.proposal = {
         "name": p.name,
         "brand": p.brand_id,
@@ -139,8 +146,11 @@ def analyse(job: IngestionJob) -> None:
         "fabrics_raw": p.fabrics_raw,
         "fabric_kind": p.fabric_kind,
         "tags": [f"{group}|{value}" for group, value in p.tags],
-        # Not reliable enough to pre-fill (see evaluate_extraction): shown as hints only.
-        "yardage_hint": p.yardage_raw,
+        # Pre-filled only when the LLM read it; the rules passage is a hint.
+        "yardage_raw": p.yardage_raw,
+        "yardage_max_m": str(p.yardage_max_m) if p.yardage_raw else None,
+        "yardage_hint": p.yardage_hint,
+        "llm_fields": sorted(p.llm_fields),
         "seasons_hint": p.seasons,
         "ocr_pages": p.document.ocr_pages,
         "unreadable": list(p.document.unreadable),

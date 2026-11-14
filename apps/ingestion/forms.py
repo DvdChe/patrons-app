@@ -216,7 +216,7 @@ def initial_from_proposal(proposal: dict) -> dict:
     keys = [
         "name", "garment_type", "family", "audience", "size_range", "difficulty",
         "difficulty_raw", "seam_allowance", "seam_allowance_detail", "seam_allowance_source",
-        "fabrics_raw", "fabric_kind",
+        "fabrics_raw", "fabric_kind", "yardage_raw", "yardage_max_m",
     ]  # fmt: skip
     initial = {k: proposal[k] for k in keys if proposal.get(k)}
     if proposal.get("brand"):

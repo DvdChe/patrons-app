@@ -203,9 +203,14 @@ class Command(BaseCommand):
             files = self._files(pattern)
             if not files:
                 continue
-            examples = self._examples(pattern, all_patterns) if llm and few_shot else None
+            # Examples come from the brand the pipeline detected, as in production.
+            examples_for = (
+                (lambda brand_id, pattern=pattern: self._examples(pattern, brand_id, all_patterns))
+                if llm and few_shot
+                else None
+            )
             proposal = propose(
-                files, BRANDS, rules, use_llm=llm, llm_model=model, llm_examples=examples
+                files, BRANDS, rules, use_llm=llm, llm_model=model, examples_for=examples_for
             )
             if llm and proposal.llm is None:
                 raise CommandError("The LLM stopped answering: results would be misleading.")
@@ -275,11 +280,9 @@ class Command(BaseCommand):
             self.texts[pattern.pk] = read_text(files) if files else None
         return self.texts[pattern.pk]
 
-    def _examples(self, pattern: Pattern, all_patterns: list[Pattern]) -> dict:
-        """Up to two worked examples per task from other patterns of the same brand."""
-        same_brand = [
-            p for p in all_patterns if p.brand_id == pattern.brand_id and p.pk != pattern.pk
-        ]
+    def _examples(self, pattern: Pattern, brand_id: int, all_patterns: list[Pattern]) -> dict:
+        """Up to two worked examples per task from other patterns of the detected brand."""
+        same_brand = [p for p in all_patterns if p.brand_id == brand_id and p.pk != pattern.pk]
         random.Random(pattern.pk).shuffle(same_brand)
         examples: dict[str, list] = {}
         for task in TASKS:

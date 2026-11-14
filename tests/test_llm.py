@@ -91,21 +91,74 @@ def test_ask_returns_none_when_ollama_is_down(settings):
     assert llm.ask("", BOOKLET) is None
 
 
-def test_llm_only_fills_what_the_rules_left_empty(fake_ollama):
+def test_merge_policy(fake_ollama):
     p = Proposal(
         family=Family.DRESSES,
         garment_type="Robe",
+        size_range="36 – 44",
+        seam_allowance="included",
+        seam_allowance_detail="1,5 cm",
         fabric_kind=FabricKind.UNSPECIFIED,
         document=DocumentText(text=BOOKLET, opening=BOOKLET[:200]),
     )
 
-    complete_with_llm(p)
+    complete_with_llm(p, brands=[(7, "Atelier Rosa", [])])
 
-    assert (p.garment_type, p.family) == ("Robe", Family.DRESSES)  # never from the LLM
-    assert p.fabric_kind == FabricKind.WOVEN  # filled
-    assert p.fabrics_raw == "crêpe, viscose"
-    assert p.yardage_max_m is None  # not trusted yet, kept on p.llm
-    assert p.llm.yardage_m == D("2.10")
+    # Rules win where they answered
+    assert (p.garment_type, p.family) == ("Robe", Family.DRESSES)
+    assert p.size_range == "36 – 44"
+    # The LLM fills the gaps
+    assert p.fabric_kind == FabricKind.WOVEN
+    assert (p.difficulty, p.difficulty_raw) == ("beginner", "Facile")
+    assert p.brand_id == 7  # brand name read by the LLM, matched to a known brand
+    # The LLM wins on yardage and seam width (measured better than the rules)
+    assert (p.yardage_raw, p.yardage_max_m) == ("2,10 m", D("2.10"))
+    assert p.seam_allowance_detail == "1 cm"
+    assert p.llm_fields == {
+        "fabric_kind", "fabrics_raw", "difficulty", "difficulty_raw", "brand",
+        "yardage_raw", "yardage_max_m", "seam_allowance_detail",
+    }  # fmt: skip
+
+
+def test_brand_examples_use_known_patterns_and_cache_their_text(
+    fake_ollama, user, brand, settings, tmp_path
+):
+    from apps.catalog.files import Entry, store_blob
+    from apps.catalog.models import Pattern, PatternFile
+    from apps.ingestion.examples import brand_examples
+    from apps.ingestion.models import BookletText
+
+    from .pdfs import make_pdf
+
+    settings.MEDIA_ROOT = tmp_path
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    }
+    known = Pattern.objects.create(
+        owner=user, brand=brand, name="Ancienne", garment_type="Robe", yardage_raw="1,80 m",
+        yardage_max_m=D("1.80"),
+    )  # fmt: skip
+    data = make_pdf([["Métrage : 1,80 m en laize 140 pour la plus grande taille"]])
+    entry = Entry("Livret.pdf", len(data), lambda: io.BytesIO(data))
+    name, digest, _ = store_blob(user.pk, entry)
+    PatternFile.objects.create(
+        pattern=known,
+        file=name,
+        original_name="Livret.pdf",
+        kind="booklet",
+        sha256=digest,
+        size=len(data),
+    )
+
+    examples = brand_examples(user, brand.pk)
+
+    assert examples["yardage"][0][1] == {"yardage_m": 1.8}
+    assert "1,80 m en laize 140" in examples["yardage"][0][0]
+    assert BookletText.objects.count() == 1
+    brand_examples(user, brand.pk)  # second time from the cache
+    assert BookletText.objects.count() == 1
+    assert brand_examples(user, brand.pk, exclude=known.pk) == {}
 
 
 def test_drawing_tags_keeps_taxonomy_values_only(db, monkeypatch, settings):
