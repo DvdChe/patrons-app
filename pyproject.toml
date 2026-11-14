@@ -11,6 +11,7 @@ dependencies = [
     "granian>=2.8.8",
     "pillow>=13.0.0",
     "psycopg[binary]>=3.3.9",
+    "pypdfium2>=5.15.2",
     "whitenoise>=6.12.0",
 ]
 
@@ -35,6 +36,9 @@ ignore = [
     "RUF012",  # Django declares Meta/admin options as mutable class attributes
     "RUF001", "RUF002", "RUF003",  # French typography (en dash, apostrophe) is real data here
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]  # parametrized cases quote real-looking phrases on one line
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"

@@ -3,6 +3,10 @@
 # ---- dev: used by compose.yaml (`docker compose up`). Source is bind-mounted, the virtualenv
 # lives in a volume, runserver reloads on change. Never used in production.
 FROM python:3.13-slim AS dev
+# OCR for scanned pattern booklets (pattern ingestion)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /bin/uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
     PATH="/opt/venv/bin:$PATH" PYTHONUNBUFFERED=1
@@ -22,6 +26,10 @@ RUN DJANGO_SECRET_KEY=build DATABASE_URL=postgres://build@localhost/build \
 
 # ---- production image (default target)
 FROM python:3.13-slim
+# OCR for scanned pattern booklets (pattern ingestion)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --system --uid 10001 app
 WORKDIR /app
 COPY --from=build --chown=app:app /app /app

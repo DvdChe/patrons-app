@@ -75,7 +75,7 @@ def test_file_kind(name, kind):
     [
         ("Moira skirt", "101 Moira skirt.pdf", True),
         ("Tina top", "101 Moira skirt.pdf", False),
-        ("Cowl Neck Top & Sleeveless Blouse", "A0-BackToBasics-CowlNeckTopAndSleevelessBlouse.pdf", True),  # noqa: E501
+        ("Cowl Neck Top & Sleeveless Blouse", "A0-BackToBasics-CowlNeckTopAndSleevelessBlouse.pdf", True),
         ("Kota", "KOTA-FABRICARTEM-Patron-PDF-eb80ai.pdf", True),
         ("Iris (combinaison)", "Iris.pdf", True),
         ("Élise", "elise-A4.pdf", True),
