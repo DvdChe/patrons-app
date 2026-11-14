@@ -235,7 +235,8 @@ _NAME_NOISE = {
     "projecteur", "livret", "notice", "planches", "planche", "instructions", "de", "la", "le",
     "les", "du", "by", "fr", "en", "eng", "the", "size", "sizes", "taille", "tailles", "pack",
     "only", "sa", "et", "and", "x", "digital", "download", "free", "files", "fichiers", "version",
-    "t", "ans", "kids", "enfant",
+    "t", "ans", "kids", "enfant", "compressed", "optimized", "optimised", "final", "web",
+    "printable", "print", "tiled", "layers", "layered", "merged", "file", "v1", "v2", "v3",
 }  # fmt: skip
 
 
@@ -244,17 +245,32 @@ def name_candidate(file_names: list[str], brand_words: set[str]) -> str:
     for name in file_names:
         stem = re.sub(r"\.[a-z0-9]{2,4}$", "", name.rsplit("/", 1)[-1], flags=re.I)
         words = re.split(r"[^a-z0-9]+", prepare(stem))
-        kept = [w for w in words if w and w not in _NAME_NOISE | brand_words and not _is_id(w)]
+        words = [w for w in words if w]
+        if words and _is_shop_suffix(words[-1]):
+            words = words[:-1]
+        kept = [w for w in words if w not in _NAME_NOISE | brand_words and not _is_id(w)]
         if kept:
-            return " ".join(w.capitalize() for w in kept)
+            return " ".join(_display(w) for w in kept)
     return ""
 
 
 def _is_id(word: str) -> bool:
-    """Numbers and random shop suffixes such as "eb80ai" or "j8bv0n"."""
-    return word.isdigit() or (
-        len(word) == 6 and any(c.isdigit() for c in word) and any(c.isalpha() for c in word)
-    )
+    """Numbers and random shop suffixes ("eb80ai", "xrzcej"-like mixes of letters and digits).
+    Product codes ("up1056": letters then digits) are not ids: they name the pattern."""
+    if word.isdigit():
+        return True
+    if re.fullmatch(r"[a-z]{1,4}\d{2,6}", word):
+        return False
+    return len(word) == 6 and any(c.isdigit() for c in word) and any(c.isalpha() for c in word)
+
+
+def _is_shop_suffix(word: str) -> bool:
+    """Random letters appended by shops to download names ("…-barrel-xrzcej")."""
+    return len(word) == 6 and word.isalpha() and sum(c in "aeiouy" for c in word) <= 1
+
+
+def _display(word: str) -> str:
+    return word.upper() if re.fullmatch(r"[a-z]{1,4}\d{2,6}", word) else word.capitalize()
 
 
 _TYPE_WORDS = [
@@ -283,6 +299,19 @@ def garment_type(label: str, first_page: str) -> tuple[str, Family]:
             value = min(hits)[1]
             return value, n.family(value)
     return "", Family.UNCLASSIFIED
+
+
+_COPYRIGHT = re.compile(
+    r"(?:©|\(c\)|(?i:copyright))\s*(?:\d{4}\s*)?([A-Z][\w&'’-]*(?:[ ][A-Z&][\w&'’-]*){0,4})",
+)
+
+
+def copyright_holder(raw_text: str) -> str:
+    """Brand named in a copyright notice ("© Unfettered Patterns 2025"), from the raw text
+    (capitals matter). Used to suggest a new brand when no known brand matched."""
+    if m := _COPYRIGHT.search(raw_text):
+        return m.group(1).strip(" .,-")
+    return ""
 
 
 def audience(text: str) -> Audience:

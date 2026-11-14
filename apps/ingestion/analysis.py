@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from apps.catalog.files import IMAGE_SUFFIXES, Entry, file_kind, is_junk, nfc, store_blob
-from apps.catalog.models import Brand, PatternFile, SeamAllowance
+from apps.catalog.models import Brand, InfoSource, PatternFile, SeamAllowance
 
 from .documents import SourceFile
 from .models import IngestionFile, IngestionJob
@@ -123,6 +123,8 @@ def analyse(job: IngestionJob) -> None:
     job.proposal = {
         "name": p.name,
         "brand": p.brand_id,
+        "new_brand": p.new_brand,
+        "has_booklet": any(f.kind == PatternFile.Kind.BOOKLET for f in files),
         "garment_type": p.garment_type,
         "family": p.family,
         "audience": p.audience,
@@ -139,6 +141,8 @@ def analyse(job: IngestionJob) -> None:
         "ocr_pages": p.document.ocr_pages,
         "unreadable": list(p.document.unreadable),
     }
+    if not job.proposal["has_booklet"] and p.seam_allowance_source == InfoSource.BOOKLET:
+        job.proposal["seam_allowance_source"] = InfoSource.PIECES  # read on the pattern pieces
     job.thumbnail_candidates = _thumbnail_candidates(files, pdf_data)
     job.save(update_fields=["proposal", "thumbnail_candidates"])
 
@@ -147,10 +151,13 @@ def _thumbnail_candidates(files: list[IngestionFile], pdf_data: dict[int, bytes]
     """Images first (often the technical drawing), then the first pages of the booklets and
     other documents. Pattern pieces are skipped."""
     out = [{"file": f.pk, "page": None} for f in files if f.kind == PatternFile.Kind.IMAGE]
+    pdfs = [f for f in files if f.pk in pdf_data]
     ordered = sorted(
-        (f for f in files if f.pk in pdf_data and f.kind != PatternFile.Kind.PIECES),
+        (f for f in pdfs if f.kind != PatternFile.Kind.PIECES),
         key=lambda f: f.kind != PatternFile.Kind.BOOKLET,
     )
+    if not out and not ordered:  # pieces only: their first page often has a drawing or title
+        ordered = pdfs
     for f in ordered:
         try:
             pdf = pdfium.PdfDocument(io.BytesIO(pdf_data[f.pk]))

@@ -125,6 +125,9 @@ def test_fabrics(text, expected):
         (["Core Fabrics_Brise Knit Dress_Copyshop-A0.pdf"], "Brise Knit Dress"),
         (["MPF_Garance Notice & Planches.zip"], "Garance"),
         (["blouse-femme-quetzal-patron-de-couture-pdf-32-50.zip"], "Blouse Quetzal"),
+        # Product codes are kept, export noise is dropped
+        (["up1056-a4-letter_compressed.pdf"], "UP1056"),
+        (["INTI-Pantalon-wide-leg-ou-barrel-xrzcej.zip"], "Inti Pantalon Wide Leg Ou Barrel"),
     ],
 )
 def test_name_candidate(names, expected):
@@ -168,3 +171,16 @@ def test_brand_prefers_file_names_and_aliases():
     assert x.brand(brands, ["luisa.pdf"], x.prepare("un patron Atelier Brunette")) == 2
     assert x.brand(brands, ["luisa.pdf"], x.prepare("tissu en lin, robe")) is None  # too generic
     assert x.brand(brands, ["luisa.pdf"], x.prepare("www.atelierbrunette.com")) == 2  # glued
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("© Unfettered Patterns 2025\nThis is a free sewing pattern", "Unfettered Patterns"),
+        ("Copyright 2024 Atelier Neuf. All rights reserved.", "Atelier Neuf"),
+        ("(c) Maison Couture, 2023", "Maison Couture"),
+        ("Pas de mention ici", ""),
+    ],
+)
+def test_copyright_holder(raw, expected):
+    assert x.copyright_holder(raw) == expected

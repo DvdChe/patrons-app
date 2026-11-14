@@ -192,6 +192,8 @@ def initial_from_proposal(proposal: dict) -> dict:
     initial = {k: proposal[k] for k in keys if proposal.get(k)}
     if proposal.get("brand"):
         initial["brand"] = proposal["brand"]
+    elif proposal.get("new_brand"):
+        initial["new_brand"] = proposal["new_brand"]
     initial["brand_confidence"] = "certain" if proposal.get("brand") else "unknown"
     return initial
 

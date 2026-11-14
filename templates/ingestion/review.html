@@ -18,6 +18,7 @@
   <ul class="files-list">
     {% for f in files %}<li>{{ f.original_name }} <span class="disc">{{ f.get_kind_display }} · {{ f.size|filesizeformat }}</span></li>{% endfor %}
   </ul>
+  {% if not job.proposal.has_booklet %}<p class="warn">Aucun livret reconnu parmi les fichiers : la plupart des informations (tailles, niveau, tissus, marges) se trouvent dans le livret. Si vous l’avez, abandonnez cet ajout et renvoyez-le avec les planches.</p>{% endif %}
   {% if job.proposal.ocr_pages %}<p class="disc">{{ job.proposal.ocr_pages }} page(s) scannée(s) lue(s) par reconnaissance de texte : vérifiez particulièrement les valeurs.</p>{% endif %}
   {% if job.proposal.unreadable %}<p class="warn">Illisible(s) : {{ job.proposal.unreadable|join:", " }}</p>{% endif %}
 

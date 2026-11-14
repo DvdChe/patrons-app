@@ -5,7 +5,7 @@ field name to where its pre-filled value comes from (review page only).{% endcom
     {% include "catalog/_field.html" with field=form.name source=sources.name %}
     <div>
       {% include "catalog/_field.html" with field=form.brand source=sources.brand %}
-      {% if form.new_brand %}{% include "catalog/_field.html" with field=form.new_brand %}{% endif %}
+      {% if form.new_brand %}{% include "catalog/_field.html" with field=form.new_brand source=sources.new_brand %}{% endif %}
     </div>
     {% include "catalog/_field.html" with field=form.brand_confidence source=sources.brand_confidence %}
     {% include "catalog/_field.html" with field=form.audience source=sources.audience %}

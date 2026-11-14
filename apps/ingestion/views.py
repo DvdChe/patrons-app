@@ -46,6 +46,7 @@ def upload(request):
 SOURCES = {
     "name": "d’après le nom des fichiers",
     "brand": "détectée",
+    "new_brand": "lue dans le PDF (marque inconnue)",
     "garment_type": "à vérifier",
     "family": "à vérifier",
     "audience": "à vérifier",

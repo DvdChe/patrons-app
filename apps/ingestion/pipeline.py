@@ -21,6 +21,7 @@ from .documents import DocumentText, SourceFile, read_text
 @dataclass
 class Proposal:
     brand_id: int | None = None
+    new_brand: str = ""  # brand named in the files but unknown: suggested for creation
     name: str = ""
     garment_type: str = ""
     family: Family = Family.UNCLASSIFIED
@@ -55,6 +56,10 @@ def propose(
     p = Proposal(document=doc)
 
     p.brand_id = x.brand(brands, names, text)
+    if p.brand_id is None and (holder := x.copyright_holder(doc.text)):
+        known = {name.lower(): pk for pk, name, _ in brands}
+        p.brand_id = known.get(holder.lower())
+        p.new_brand = "" if p.brand_id else holder
     brand_words: set[str] = set()
     for pk, name, aliases in brands:
         if pk == p.brand_id:

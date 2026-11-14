@@ -294,3 +294,28 @@ def test_brand_charts_api_tells_which_charts_cover_the_sizes(logged, brand):
         logged.get(f"/api/brands/{brand.pk}/charts?sizes=34 – 52").json()["charts"][0]["covers"]
         is False
     )
+
+
+def test_pieces_only_upload(logged):
+    pieces = make_pdf(
+        [
+            [
+                "© Unfettered Patterns 2025",
+                "Model #UP1056",
+                "Sizes XS-XL",
+                "*Hem and seam allowances included!",
+            ],
+            ["A2"],
+        ]
+    )
+    upload(logged, ("up1056-a4-letter_compressed.pdf", pieces))
+    job = IngestionJob.objects.get()
+    p = job.proposal
+    assert p["name"] == "UP1056"
+    assert p["new_brand"] == "Unfettered Patterns"
+    assert p["size_range"] == "XS – XL"
+    assert p["has_booklet"] is False
+    assert len(job.thumbnail_candidates) == 2  # the pieces pages, nothing better
+    html = logged.get(f"/imports/{job.pk}/").content.decode()
+    assert "Aucun livret reconnu" in html
+    assert 'value="Unfettered Patterns"' in html
