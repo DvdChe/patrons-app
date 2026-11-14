@@ -207,6 +207,8 @@ class Command(BaseCommand):
             proposal = propose(
                 files, BRANDS, rules, use_llm=llm, llm_model=model, llm_examples=examples
             )
+            if llm and proposal.llm is None:
+                raise CommandError("The LLM stopped answering: results would be misleading.")
             done += 1
             ocr_pages += proposal.document.ocr_pages
             llm_seconds += proposal.llm.seconds if proposal.llm else 0
