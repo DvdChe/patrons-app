@@ -19,6 +19,7 @@ from . import llm
 from .documents import SourceFile
 from .examples import brand_examples
 from .models import IngestionFile, IngestionJob
+from .pdf import LOCK
 from .pipeline import brand_table, propose
 
 ACCEPTED_SUFFIXES = {".pdf", ".zip"} | IMAGE_SUFFIXES
@@ -175,12 +176,12 @@ def _thumbnail_candidates(files: list[IngestionFile], pdf_data: dict[int, bytes]
     if not out and not ordered:  # pieces only: their first page often has a drawing or title
         ordered = pdfs
     for f in ordered:
-        try:
-            pdf = pdfium.PdfDocument(io.BytesIO(pdf_data[f.pk]))
-        except pdfium.PdfiumError:
-            continue
-        with closing(pdf):
-            out += [
-                {"file": f.pk, "page": i} for i in range(min(THUMBNAIL_PAGES_PER_PDF, len(pdf)))
-            ]
+        with LOCK:
+            try:
+                pdf = pdfium.PdfDocument(io.BytesIO(pdf_data[f.pk]))
+            except pdfium.PdfiumError:
+                continue
+            with closing(pdf):
+                pages = len(pdf)
+        out += [{"file": f.pk, "page": i} for i in range(min(THUMBNAIL_PAGES_PER_PDF, pages))]
     return out[:MAX_THUMBNAIL_CANDIDATES]

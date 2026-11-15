@@ -7,6 +7,7 @@ from django.core.files.base import ContentFile
 from PIL import Image
 
 from .models import IngestionFile
+from .pdf import LOCK
 
 MAX_RENDER_PX = 2000  # longest side; bounds memory whatever the page size
 THUMBNAIL_PX = 800
@@ -24,15 +25,16 @@ def render(f: IngestionFile, page: int | None, longest_side: int) -> Image.Image
         img = img.convert("RGB")
         img.thumbnail((longest_side, longest_side))
         return img
-    pdf = pdfium.PdfDocument(io.BytesIO(data))
-    try:
-        if not 0 <= page < len(pdf):
-            raise ValueError(f"page {page} out of range")
-        p = pdf[page]
-        width, height = p.get_size()
-        return p.render(scale=longest_side / max(width, height)).to_pil().convert("RGB")
-    finally:
-        pdf.close()
+    with LOCK:
+        pdf = pdfium.PdfDocument(io.BytesIO(data))
+        try:
+            if not 0 <= page < len(pdf):
+                raise ValueError(f"page {page} out of range")
+            p = pdf[page]
+            width, height = p.get_size()
+            return p.render(scale=longest_side / max(width, height)).to_pil().convert("RGB")
+        finally:
+            pdf.close()
 
 
 def jpeg(img: Image.Image, quality: int = 85) -> bytes:

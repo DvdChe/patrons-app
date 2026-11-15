@@ -11,6 +11,8 @@ import pypdfium2 as pdfium
 from apps.catalog.files import file_kind
 from apps.catalog.models import PatternFile
 
+from .pdf import LOCK
+
 log = logging.getLogger(__name__)
 
 # Pages read per PDF kind: booklets hold the useful information, pieces sometimes a title
@@ -70,23 +72,27 @@ def read_text(files: list[SourceFile]) -> DocumentText:
     opening_pages: list[str] = []
     unreadable = []
     for source, kind in _ordered_pdfs(files):
-        try:
-            pdf = pdfium.PdfDocument(source.data)
-        except pdfium.PdfiumError:
-            unreadable.append(source.name)
-            continue
+        with LOCK:
+            try:
+                pdf = pdfium.PdfDocument(source.data)
+            except pdfium.PdfiumError:
+                unreadable.append(source.name)
+                continue
         try:
             for i in range(min(PAGES[kind], len(pdf))):
-                page = pdf[i]
-                text = page.get_textpage().get_text_range()
-                width, height = page.get_size()
-                if (
-                    len(text.strip()) < MIN_PAGE_CHARS
-                    and kind != PatternFile.Kind.PIECES
-                    and width * height <= MAX_OCR_AREA
-                    and out.ocr_pages < MAX_OCR_PAGES
-                ):
-                    image = page.render(scale=OCR_DPI / 72).to_pil()
+                image = None
+                with LOCK:
+                    page = pdf[i]
+                    text = page.get_textpage().get_text_range()
+                    width, height = page.get_size()
+                    if (
+                        len(text.strip()) < MIN_PAGE_CHARS
+                        and kind != PatternFile.Kind.PIECES
+                        and width * height <= MAX_OCR_AREA
+                        and out.ocr_pages < MAX_OCR_PAGES
+                    ):
+                        image = page.render(scale=OCR_DPI / 72).to_pil()
+                if image is not None:  # OCR is slow and does not touch PDFium: unlocked
                     text = ocr_image(image)
                     out.ocr_pages += 1
                 out.pages += 1
@@ -95,7 +101,8 @@ def read_text(files: list[SourceFile]) -> DocumentText:
                     opening_pages.append(text)
                 chunks.append(text)
         finally:
-            pdf.close()
+            with LOCK:
+                pdf.close()
     out.text = "\n".join(chunks)
     out.opening = "\n".join(opening_pages)
     out.unreadable = tuple(unreadable)
